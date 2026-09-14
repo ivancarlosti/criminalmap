@@ -1,0 +1,23 @@
+{
+  "pageTitle": "Crime Board",
+  "pageSubtitle": "Investigation Network Graph",
+  "langLabel": "Language",
+  "textareaLabel": "Relations text",
+  "textareaPlaceholder": "Paste relations as [Name] -> [Name] : Description | Sources: url1, url2",
+  "parseButton": "Process",
+  "parseButtonLoading": "Processing...",
+  "networkLoading": "Loading investigation network...",
+  "networkError": "Could not load the graph. Check that the API is available.",
+  "modalTitle": "Connection",
+  "modalNodeTitle": "Entity",
+  "modalTopicLabel": "Topic",
+  "modalSourcesLabel": "Sources",
+  "modalNoSources": "No sources provided",
+  "modalClose": "Close",
+  "errorEmptyInput": "The text is empty. Paste at least one relation before processing.",
+  "errorNoValidLines": "No valid lines found. Use the format [Name] -> [Name] : Description.",
+  "errorRequestFailed": "Request failed. Please try again.",
+  "edgeDirectionHint": "{from} → {to}",
+  "nodeLabelLabel": "Name",
+  "nodeTypeLabel": "Type"
+}

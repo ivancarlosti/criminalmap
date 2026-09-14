@@ -1,0 +1,367 @@
+/* Crime Board / Investigation Network Graph — noir detective theme. */
+
+:root {
+  --bg: #0e0e10;
+  --panel: #161619;
+  --panel-alt: #1c1b18;
+  --border: #2a2a30;
+  --border-warm: #3a372e;
+  --text: #e8e2d5;
+  --muted: #9a938a;
+  --accent: #e6b84c;
+  --accent-bright: #f5cb6b;
+  --accent-ink: #14120a;
+  --mono: 'Courier New', Courier, monospace;
+  --sans: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background-color: var(--bg);
+  background-image:
+    radial-gradient(ellipse at 50% -10%, rgba(230, 184, 76, 0.08), transparent 55%),
+    radial-gradient(ellipse at 50% 120%, rgba(0, 0, 0, 0.95), transparent 60%),
+    repeating-linear-gradient(
+      45deg,
+      rgba(255, 255, 255, 0.012) 0,
+      rgba(255, 255, 255, 0.012) 1px,
+      transparent 1px,
+      transparent 6px
+    );
+  color: var(--text);
+  font-family: var(--sans);
+}
+
+body.modal-open {
+  overflow: hidden;
+}
+
+/* Header ------------------------------------------------------------------ */
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(18, 18, 20, 0.92);
+}
+
+.header-text h1 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.header-text p {
+  margin: 4px 0 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+
+.lang-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Main layout -------------------------------------------------------------- */
+
+.app-main {
+  display: flex;
+  gap: 16px;
+  padding: 16px;
+  height: calc(100vh - 88px);
+  min-height: 480px;
+}
+
+.input-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 38%;
+  min-width: 300px;
+}
+
+.network-panel {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+}
+
+.field-label {
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+/* Inputs & controls -------------------------------------------------------- */
+
+#relation-input {
+  flex: 1;
+  min-height: 320px;
+  width: 100%;
+  padding: 12px 14px;
+  resize: vertical;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.55;
+  outline: none;
+}
+
+#relation-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px rgba(230, 184, 76, 0.35);
+}
+
+#parse-button {
+  padding: 13px 18px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background-color 120ms ease, transform 80ms ease;
+}
+
+#parse-button:hover {
+  background: var(--accent-bright);
+}
+
+#parse-button:active {
+  transform: translateY(1px);
+}
+
+#parse-button:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#lang-select {
+  padding: 8px 10px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+}
+
+#lang-select:focus {
+  border-color: var(--accent);
+}
+
+/* Network container -------------------------------------------------------- */
+
+#network {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  background: #101014;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+  color: var(--muted);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 16px;
+}
+
+/* Modal (evidence card) ---------------------------------------------------- */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(2px);
+}
+
+.modal-overlay[hidden] {
+  display: none;
+}
+
+.modal-card {
+  width: 100%;
+  max-width: 580px;
+  max-height: 85vh;
+  overflow-y: auto;
+  background: var(--panel-alt);
+  color: var(--text);
+  border: 1px solid var(--border-warm);
+  border-top: 3px solid var(--accent);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.65);
+  padding: 20px 24px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--border-warm);
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 1.15rem;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.modal-close {
+  padding: 8px 14px;
+  border: 1px solid var(--border-warm);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.modal-close:hover {
+  border-color: var(--accent);
+  color: var(--accent-bright);
+}
+
+.modal-direction {
+  margin: 0 0 16px;
+  padding: 10px 12px;
+  background: rgba(230, 184, 76, 0.08);
+  border-left: 3px solid var(--accent);
+  border-radius: 0 4px 4px 0;
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  color: var(--accent-bright);
+  word-break: break-word;
+}
+
+.modal-section {
+  margin-bottom: 16px;
+}
+
+.modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.modal-section-title {
+  margin: 0 0 6px;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.modal-topic,
+.modal-value {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  word-break: break-word;
+}
+
+.modal-empty {
+  margin: 0;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.source-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.source-list li {
+  word-break: break-all;
+}
+
+.source-list a {
+  color: var(--accent-bright);
+  text-decoration: none;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+
+.source-list a:hover {
+  text-decoration: underline;
+}
+
+/* Responsive --------------------------------------------------------------- */
+
+@media (max-width: 900px) {
+  .app-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .app-main {
+    flex-direction: column;
+    height: auto;
+  }
+
+  .input-panel {
+    width: 100%;
+    min-width: 0;
+  }
+
+  #relation-input {
+    min-height: 220px;
+  }
+
+  .network-panel {
+    height: 70vh;
+    min-height: 420px;
+  }
+}

@@ -1,0 +1,34 @@
+# Dependencies — never copy into the image.
+node_modules
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Version control and CI — not needed at runtime.
+.git
+.github
+
+# Docker-only files — not needed inside the runtime image.
+docker
+Dockerfile
+.dockerignore
+
+# Environment files — secrets must stay out of the image.
+.env
+.env.*
+!.env.example
+
+# Documentation and license — keep the image lean.
+*.md
+LICENSE
+
+# Logs and temporary files.
+*.log
+tmp
+*.tmp
+
+# OS / editor cruft.
+.DS_Store
+Thumbs.db
+.idea
+.vscode

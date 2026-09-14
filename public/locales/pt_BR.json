@@ -1,0 +1,23 @@
+{
+  "pageTitle": "Quadro de Crimes",
+  "pageSubtitle": "Rede de Investigação Criminal",
+  "langLabel": "Idioma",
+  "textareaLabel": "Texto das relações",
+  "textareaPlaceholder": "Cole as relações no formato [Nome] -> [Nome] : Descrição | Fontes: url1, url2",
+  "parseButton": "Processar",
+  "parseButtonLoading": "Processando...",
+  "networkLoading": "Carregando a rede de investigação...",
+  "networkError": "Não foi possível carregar o gráfico. Verifique se a API está disponível.",
+  "modalTitle": "Conexão",
+  "modalNodeTitle": "Entidade",
+  "modalTopicLabel": "Tema",
+  "modalSourcesLabel": "Fontes",
+  "modalNoSources": "Nenhuma fonte fornecida",
+  "modalClose": "Fechar",
+  "errorEmptyInput": "O texto está vazio. Cole ao menos uma relação antes de processar.",
+  "errorNoValidLines": "Nenhuma linha válida encontrada. Use o formato [Nome] -> [Nome] : Descrição.",
+  "errorRequestFailed": "Falha na requisição. Tente novamente.",
+  "edgeDirectionHint": "{from} → {to}",
+  "nodeLabelLabel": "Nome",
+  "nodeTypeLabel": "Tipo"
+}

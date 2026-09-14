@@ -1,0 +1,58 @@
+# Crime Board / Investigation Network Graph — Docker Compose setup.
+#
+# The application container connects to a MariaDB instance running on the
+# Docker host through the special "host.docker.internal" hostname (enabled by
+# the extra_hosts entry below). This is the default and recommended approach.
+#
+# Quick start:
+#   cp docker/.env.example docker/.env
+#   docker compose -f docker/docker-compose.yml up -d
+
+services:
+  criminalmap:
+    image: ghcr.io/ivancarlosti/criminalmap:latest
+    container_name: criminalmap
+    # Loads docker/.env into the container environment (path is relative to
+    # this compose file).
+    env_file:
+      - .env
+    # The app always listens on 8080 inside the container (see Dockerfile), so
+    # pin that value regardless of the host-side PORT variable below.
+    environment:
+      PORT: "8080"
+    # Allows the container to reach a MariaDB server running on the Docker host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Host port (default 8080) maps to the application's container port 8080.
+    ports:
+      - "${PORT:-8080}:8080"
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # OPTIONAL: containerized MariaDB for users who prefer a self-contained stack.
+  # To use it instead of a database on the Docker host:
+  #   1. Uncomment the mariadb service and the volumes block below.
+  #   2. In docker/.env, set DB_HOST=mariadb (instead of host.docker.internal).
+  # ---------------------------------------------------------------------------
+  # mariadb:
+  #   image: mariadb:11
+  #   container_name: criminalmap-mariadb
+  #   restart: unless-stopped
+  #   environment:
+  #     MARIADB_ROOT_PASSWORD: ${DB_PASSWORD:-change_me}
+  #     MARIADB_DATABASE: ${DB_NAME:-criminalmap}
+  #     MARIADB_USER: ${DB_USER:-criminalmap}
+  #     MARIADB_PASSWORD: ${DB_PASSWORD:-change_me}
+  #   ports:
+  #     - "${DB_PORT:-3306}:3306"
+  #   volumes:
+  #     - mariadb_data:/var/lib/mysql
+  #   healthcheck:
+  #     test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
+  #     start_period: 20s
+
+# volumes:
+#   mariadb_data:
