@@ -36,12 +36,58 @@
     },
   };
 
+  // Physics profiles. The compact one is used on narrow (phone) viewports: the
+  // same number of nodes then occupies a much smaller area, so the automatic
+  // fit zooms in less and the labels stay readable.
+  const PHYSICS_PROFILES = {
+    wide: {
+      gravitationalConstant: -6000,
+      centralGravity: 0.25,
+      springLength: 150,
+      springConstant: 0.05,
+      damping: 0.3,
+      avoidOverlap: 0.3,
+    },
+    compact: {
+      gravitationalConstant: -3200,
+      centralGravity: 0.35,
+      springLength: 90,
+      springConstant: 0.06,
+      damping: 0.35,
+      avoidOverlap: 0.4,
+    },
+  };
+
+  const COMPACT_VIEWPORT_QUERY = '(max-width: 900px)';
+  const COARSE_POINTER_QUERY = '(pointer: coarse)';
+  const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+  const STABILIZATION_ITERATIONS = 200;
+
+  // How long the solver keeps relaxing after a drag before it is frozen again.
+  const SETTLE_DELAY_MS = 600;
+
+  // Frames used to wait for a measurable canvas before reporting a problem.
+  const SIZE_RETRY_LIMIT = 12;
+
+  // Explicit height (share of the visible viewport) used on phones, both in CSS
+  // and as a runtime fallback for browsers that resolve the flex height to 0.
+  const COMPACT_HEIGHT_RATIO = 0.58;
+  const COMPACT_HEIGHT_MIN = 320;
+  const COMPACT_HEIGHT_MAX = 620;
+
+  const VIS_LIBRARY_TIMEOUT_MS = 8000;
+
   const state = {
     network: null,
     graph: { nodes: [], edges: [] },
     modalType: null, // 'edge' | 'node' | null
     modalData: null,
     networkMessage: null, // i18n key of the message currently shown
+    networkMessageVars: null, // interpolation values of that message
+    settleTimer: null, // pending "let the physics relax, then freeze" timer
+    resizeTimer: null, // debounce timer for viewport resizes
+    sizeAttempts: 0, // retries spent waiting for a measurable canvas
+    forcedHeight: false, // true once the inline phone height was applied
   };
 
   const elements = {
@@ -150,24 +196,67 @@
     }));
   }
 
+  /**
+   * @param {string} query a CSS media query
+   * @returns {boolean} true when the query matches the current viewport.
+   */
+  function matchesMedia(query) {
+    return typeof global.matchMedia === 'function' ? global.matchMedia(query).matches : false;
+  }
+
+  /** @returns {boolean} true on phone/tablet sized viewports. */
+  function isCompactViewport() {
+    return matchesMedia(COMPACT_VIEWPORT_QUERY);
+  }
+
+  /** @returns {boolean} true on touch devices, where hovering does not exist. */
+  function isCoarsePointer() {
+    return matchesMedia(COARSE_POINTER_QUERY);
+  }
+
+  /**
+   * @param {boolean} animated
+   * @returns {Object} options for network.fit(), honouring reduced motion.
+   */
+  function fitOptions(animated) {
+    if (!animated || matchesMedia(REDUCED_MOTION_QUERY)) {
+      return { animation: false };
+    }
+
+    return { animation: { duration: 600, easingFunction: 'easeInOutQuad' } };
+  }
+
+  /** @returns {boolean} true when the page was opened with ?debug=1. */
+  function debugEnabled() {
+    return /(?:^|[?&])debug=1(?:&|$)/.test(String((global.location && global.location.search) || ''));
+  }
+
   function buildOptions() {
+    const compact = isCompactViewport();
+
     return {
       autoResize: true,
       physics: {
         enabled: true,
         solver: 'barnesHut',
-        barnesHut: {
-          gravitationalConstant: -9000,
-          centralGravity: 0.2,
-          springLength: 180,
-          springConstant: 0.04,
-          damping: 0.09,
-          avoidOverlap: 0.2,
+        barnesHut: compact ? PHYSICS_PROFILES.compact : PHYSICS_PROFILES.wide,
+        // Damped solver settings: the layout slows down and stops on its own
+        // instead of leaving a permanent micro-movement behind.
+        minVelocity: 1,
+        maxVelocity: 30,
+        timestep: 0.35,
+        adaptiveTimestep: true,
+        stabilization: {
+          enabled: true,
+          iterations: STABILIZATION_ITERATIONS,
+          updateInterval: 20,
+          // The initial fit is done explicitly, so later settles never re-frame
+          // the view the user has panned or zoomed.
+          fit: false,
         },
-        stabilization: { enabled: true, iterations: 250, fit: true },
       },
       interaction: {
-        hover: true,
+        hover: !isCoarsePointer(),
         tooltipDelay: 150,
         dragNodes: true,
         dragView: true,
@@ -181,26 +270,261 @@
   }
 
   /**
+   * Physics runs only while the graph is settling; afterwards the solver is
+   * frozen so nothing keeps drifting or wobbling after a pinch, pan or drag.
+   *
+   * vis emits the stabilization events again from setOptions()/stopSimulation(),
+   * so this function is intentionally idempotent.
+   *
+   * @param {Object} network
+   */
+  function freezePhysics(network) {
+    const physics = network.physics;
+
+    if (!physics || !physics.options || physics.options.enabled === false) {
+      return;
+    }
+
+    network.setOptions({ physics: { enabled: false } });
+
+    if (typeof network.stopSimulation === 'function') {
+      // false: do not re-emit the stabilization events.
+      network.stopSimulation(false);
+    }
+  }
+
+  /**
+   * Let the solver relax for a moment (smooth, damped movement) and freeze it
+   * again, so a moved graph settles instead of jiggling forever.
+   *
+   * @param {Object} network
+   */
+  function settlePhysics(network) {
+    if (state.settleTimer) {
+      global.clearTimeout(state.settleTimer);
+    }
+
+    network.setOptions({ physics: { enabled: true } });
+
+    if (typeof network.startSimulation === 'function') {
+      network.startSimulation();
+    }
+
+    state.settleTimer = global.setTimeout(() => {
+      state.settleTimer = null;
+      freezePhysics(network);
+    }, SETTLE_DELAY_MS);
+  }
+
+  /**
+   * Wire the stabilization lifecycle of a freshly created network.
+   *
+   * @param {Object} network
+   */
+  function bindPhysicsEvents(network) {
+    network.once('stabilizationIterationsDone', () => {
+      const box = networkBox();
+
+      // Only frame the graph when the canvas already has a real size.
+      if (box.width > 0 && box.height > 0) {
+        network.fit(fitOptions(false));
+      }
+
+      freezePhysics(network);
+    });
+
+    network.on('stabilizationIterationsDone', () => freezePhysics(network));
+
+    network.on('dragStart', () => {
+      if (state.settleTimer) {
+        global.clearTimeout(state.settleTimer);
+        state.settleTimer = null;
+      }
+
+      // While a node is dragged its neighbours follow, then everything settles.
+      network.setOptions({ physics: { enabled: true } });
+    });
+
+    network.on('dragEnd', () => settlePhysics(network));
+  }
+
+  /**
    * Show an i18n message on top of the network canvas.
    *
    * @param {string} key
+   * @param {Object} [vars] interpolation values for the message
    */
-  function setNetworkMessage(key) {
+  function setNetworkMessage(key, vars) {
     state.networkMessage = key;
+    state.networkMessageVars = vars || null;
 
     if (elements.networkMessage) {
-      elements.networkMessage.textContent = I18n.translate(key);
+      elements.networkMessage.textContent = I18n.translate(key, state.networkMessageVars);
       elements.networkMessage.hidden = false;
     }
   }
 
   function clearNetworkMessage() {
     state.networkMessage = null;
+    state.networkMessageVars = null;
 
     if (elements.networkMessage) {
       elements.networkMessage.textContent = '';
       elements.networkMessage.hidden = true;
+      elements.networkMessage.classList.remove('network-message-debug');
     }
+  }
+
+  /**
+   * Report a problem that prevents the graph from being drawn: it is logged for
+   * developers and shown on the page, because on a phone the console is usually
+   * out of reach.
+   *
+   * @param {string} key
+   * @param {Object} [vars]
+   */
+  function reportGraphProblem(key, vars) {
+    console.error(`[criminalmap] graph: ${key}`, vars || {});
+    setNetworkMessage(key, vars);
+  }
+
+  /** @returns {{width: number, height: number}} the measured graph container. */
+  function networkBox() {
+    if (!elements.network) {
+      return { width: 0, height: 0 };
+    }
+
+    return {
+      width: elements.network.clientWidth || 0,
+      height: elements.network.clientHeight || 0,
+    };
+  }
+
+  /**
+   * On phone sized viewports pin the height of the graph area in pixels.
+   *
+   * Some mobile browsers resolve a flex based / viewport based height to zero
+   * until the page has been laid out (or when the address bar moves), which
+   * leaves vis with a 0×0 canvas and an apparently empty graph area.
+   */
+  function applyCompactHeight() {
+    if (!elements.network) {
+      return;
+    }
+
+    if (!isCompactViewport()) {
+      if (state.forcedHeight) {
+        elements.network.style.height = '';
+        state.forcedHeight = false;
+      }
+
+      return;
+    }
+
+    const height = Math.round(Math.min(
+      Math.max(global.innerHeight * COMPACT_HEIGHT_RATIO, COMPACT_HEIGHT_MIN),
+      COMPACT_HEIGHT_MAX
+    ));
+
+    elements.network.style.height = `${height}px`;
+    state.forcedHeight = true;
+  }
+
+  /**
+   * Run a callback on the next frame. rAF is throttled (or paused) on mobile
+   * browsers and inside background tabs, so a timer guarantees the retries below
+   * keep progressing even when the callback would never be scheduled.
+   *
+   * @param {Function} callback
+   */
+  function nextFrame(callback) {
+    let called = false;
+
+    const run = () => {
+      if (called) {
+        return;
+      }
+
+      called = true;
+      callback();
+    };
+
+    global.setTimeout(run, 32);
+
+    if (typeof global.requestAnimationFrame === 'function') {
+      global.requestAnimationFrame(run);
+    }
+  }
+
+  /**
+   * Make sure vis knows about a real canvas size and, when requested, frame the
+   * graph. Sizes are re-measured for a few frames because the first paint of a
+   * mobile browser may happen before the final layout.
+   *
+   * @param {Object} network
+   * @param {{fit?: boolean, animated?: boolean, report?: boolean}} [options]
+   */
+  function ensureNetworkSize(network, options = {}) {
+    if (!elements.network || !network) {
+      return;
+    }
+
+    const box = networkBox();
+
+    if (box.width === 0 || box.height === 0) {
+      if (state.sizeAttempts < SIZE_RETRY_LIMIT) {
+        state.sizeAttempts += 1;
+        nextFrame(() => ensureNetworkSize(network, options));
+        return;
+      }
+
+      if (options.report === true) {
+        reportGraphProblem('networkSizeError', { width: box.width, height: box.height });
+      }
+
+      return;
+    }
+
+    state.sizeAttempts = 0;
+    network.setSize(`${box.width}px`, `${box.height}px`);
+    network.redraw();
+
+    // A transient "no size" message must not outlive the problem.
+    if (state.networkMessage === 'networkSizeError') {
+      clearNetworkMessage();
+    }
+
+    if (options.fit === true) {
+      network.fit(fitOptions(options.animated === true));
+    }
+
+    if (debugEnabled()) {
+      showDebugInfo(network);
+    }
+  }
+
+  /**
+   * ?debug=1 -> print the measurements that matter on a phone screen: whether
+   * the library loaded, the size of the container and the graph statistics.
+   *
+   * @param {Object} network
+   */
+  function showDebugInfo(network) {
+    const box = networkBox();
+    const scale = typeof network.getScale === 'function' ? network.getScale() : 0;
+
+    if (elements.networkMessage) {
+      elements.networkMessage.classList.add('network-message-debug');
+    }
+
+    setNetworkMessage('networkDebugInfo', {
+      library: global.vis ? 'vis-network' : 'ausente/missing',
+      width: box.width,
+      height: box.height,
+      nodes: state.graph.nodes.length,
+      edges: state.graph.edges.length,
+      scale: Math.round(scale * 100) / 100,
+    });
   }
 
   /**
@@ -210,6 +534,7 @@
    */
   function renderGraph(graph) {
     state.graph = graph || { nodes: [], edges: [] };
+    state.sizeAttempts = 0;
 
     const nodes = buildNodeDataSet(state.graph.nodes);
     const edges = buildEdgeDataSet(state.graph.edges, state.graph.nodes);
@@ -222,12 +547,19 @@
 
     if (state.network) {
       state.network.setData({ nodes, edges });
-      state.network.fit({ animation: { duration: 600, easingFunction: 'easeInOutQuad' } });
+      // New nodes must reach a sensible place, then the solver is frozen again.
+      settlePhysics(state.network);
+      // ensureNetworkSize() re-frames the graph once the canvas has a real size.
+      ensureNetworkSize(state.network, { fit: true, animated: true });
       return;
     }
 
+    applyCompactHeight();
+
     state.network = new vis.Network(elements.network, { nodes, edges }, buildOptions());
     state.network.on('click', handleNetworkClick);
+    bindPhysicsEvents(state.network);
+    ensureNetworkSize(state.network, { fit: true, animated: false, report: true });
   }
 
   function labelMap() {
@@ -391,6 +723,7 @@
     const source = graphSource();
 
     if (source === '') {
+      setNetworkMessage('networkEmpty');
       return;
     }
 
@@ -408,8 +741,55 @@
       renderGraph({ nodes: payload.nodes || [], edges: payload.edges || [] });
     } catch (err) {
       console.error('Failed to load the graph:', err);
-      setNetworkMessage('networkError');
+
+      if (typeof global.vis === 'undefined') {
+        reportGraphProblem('networkLibraryError');
+        return;
+      }
+
+      reportGraphProblem('networkError');
     }
+  }
+
+  /**
+   * Wait for vis-network. views/layout.html loads it from a CDN (with a fallback
+   * source), so on a slow or filtered mobile connection it may still be on its
+   * way when this script starts.
+   *
+   * @returns {Promise<boolean>} resolves true once the library is available.
+   */
+  function waitForVisLibrary() {
+    if (global.vis) {
+      return Promise.resolve(true);
+    }
+
+    return new Promise((resolve) => {
+      let timer = null;
+      let settled = false;
+
+      const handleReady = () => finish(true);
+      const handleError = () => finish(false);
+
+      function finish(available) {
+        if (settled) {
+          return;
+        }
+
+        settled = true;
+
+        if (timer !== null) {
+          global.clearTimeout(timer);
+        }
+
+        document.removeEventListener('vis:ready', handleReady);
+        document.removeEventListener('vis:error', handleError);
+        resolve(available);
+      }
+
+      document.addEventListener('vis:ready', handleReady);
+      document.addEventListener('vis:error', handleError);
+      timer = global.setTimeout(() => finish(false), VIS_LIBRARY_TIMEOUT_MS);
+    });
   }
 
   async function handleParse() {
@@ -559,18 +939,59 @@
       }
 
       if (state.networkMessage) {
-        setNetworkMessage(state.networkMessage);
+        setNetworkMessage(state.networkMessage, state.networkMessageVars);
       }
+    });
+
+    // Phones resize the viewport while the address bar moves: keep the canvas in
+    // sync there, but never re-frame the graph (that would look like jitter).
+    global.addEventListener('resize', () => {
+      applyCompactHeight();
+
+      if (!state.network) {
+        return;
+      }
+
+      if (state.resizeTimer) {
+        global.clearTimeout(state.resizeTimer);
+      }
+
+      state.resizeTimer = global.setTimeout(() => {
+        state.resizeTimer = null;
+        ensureNetworkSize(state.network, { fit: false });
+      }, 150);
+    });
+
+    // Rotating the device changes the aspect ratio, so re-frame the graph once.
+    global.addEventListener('orientationchange', () => {
+      applyCompactHeight();
+
+      if (!state.network) {
+        return;
+      }
+
+      global.setTimeout(() => {
+        ensureNetworkSize(state.network, { fit: true, animated: true });
+      }, 350);
     });
   }
 
   async function init() {
     if (!elements.network) {
+      // Pages without a graph (home without a selected map) render their own
+      // placeholder server-side, so there is nothing to do here.
       return;
     }
 
     bindEvents();
+    applyCompactHeight();
     await I18n.ready();
+
+    if (!(await waitForVisLibrary())) {
+      reportGraphProblem('networkLibraryError');
+      return;
+    }
+
     await loadInitialGraph();
   }
 

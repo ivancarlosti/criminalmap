@@ -65,6 +65,9 @@
       <div id="network" data-source="{{MAP_GRAPH_SOURCE}}"></div>
       <div id="network-message" class="network-message" hidden></div>
     {{/if}}
+    {{#if MAP_PREVIEW_EMPTY}}
+      <div class="network-panel-empty" data-i18n="mapPreviewEmpty">No map selected yet. Pick one from the list to see the graph.</div>
+    {{/if}}
   </section>
 </main>
 

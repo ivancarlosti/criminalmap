@@ -870,6 +870,7 @@ async function homeData(req, state = {}) {
     MAPS_LISTED: all.length > 0,
     MAPS_EMPTY: all.length === 0,
     SELECTED_MAP: selected !== null,
+    MAP_PREVIEW_EMPTY: selected === null,
     SELECTED_MAP_TITLE: selected ? selected.title : '',
     SELECTED_MAP_DESCRIPTION: selected ? selected.description : '',
     SELECTED_MAP_URL: selected ? `/${prefix}/${selected.short_id}` : '',

@@ -23,9 +23,10 @@ edge with a topic description and a list of sources.
 9. [Saved maps and short URLs](#saved-maps-and-short-urls)
 10. [Web standards (robots.txt, sitemap.xml, manifest)](#web-standards-robotstxt-sitemapxml-manifest)
 11. [Themes (dark / light)](#themes-dark--light)
-12. [Internationalization (i18n)](#internationalization-i18n)
-13. [API endpoints](#api-endpoints)
-14. [GitHub Actions](#github-actions)
+12. [Graph behaviour](#graph-behaviour)
+13. [Internationalization (i18n)](#internationalization-i18n)
+14. [API endpoints](#api-endpoints)
+15. [GitHub Actions](#github-actions)
 
 ---
 
@@ -39,8 +40,8 @@ The system consists of:
 - A **plain-text parser** that accepts one relation per line and extracts the
   `from` node, `to` node, topic description, and optional `Fontes:` (sources).
 - A **Vanilla JS frontend** that renders the graph with
-  [Vis.js](https://visjs.org/) (vis-network, loaded from CDN) and shows an
-  evidence-card modal when a node or edge is clicked.
+  [Vis.js](https://visjs.org/) (vis-network, loaded from a CDN with a fallback
+  source) and shows an evidence-card modal when a node or edge is clicked.
 - An **embedded migration and seed**: on startup the API creates the database
   (if needed), applies [`db/schema.sql`](db/schema.sql:1), and inserts example
   data when the `nodes` table is empty.
@@ -149,6 +150,7 @@ criminalmap/
 │   │   └── style.css             # Noir dark theme + parchment light theme
 │   ├── js/
 │   │   ├── app.js                # Graph rendering, modals, map editing, copy link
+│   │   ├── vis-loader.js         # vis-network loader with a CDN fallback
 │   │   ├── i18n.js               # Locale loading and translation helpers
 │   │   ├── theme.js              # Dark/light toggle and theme-color meta
 │   │   └── admin.js              # Admin tabs and confirm dialogs
@@ -588,6 +590,32 @@ Response:
 ```json
 { "success": true, "removed": { "nodes": 10, "edges": 9 } }
 ```
+
+---
+
+## Graph behaviour
+
+The graph is interactive on touch screens and desktops, but it is kept **calm**:
+it settles once and then stops moving.
+
+- **Physics is only used to settle the layout.** After the initial stabilization
+  the solver is frozen (`physics.enabled = false`), so nodes do not drift or
+  wobble forever after a pinch, a pan or a tap on a phone.
+- **Moving a node re-enables the solver** while the node is dragged (its
+  neighbours follow) and for ~600 ms after it is released, then everything is
+  frozen again — a smooth settle instead of an endless jiggle.
+- Narrow viewports (`≤ 900px`) use a more compact physics profile so the same
+  graph occupies a smaller area and the automatic `fit` zooms in more (readable
+  labels) instead of shrinking the map to an unreadable smudge.
+- The graph area on phones has an **explicit height** (CSS `58svh`, pinned in
+  pixels at runtime) instead of a flex based one: some mobile browsers resolved
+  that to `0`, which left vis-network with a `0×0` canvas — an apparently empty
+  graph.
+- If the graph cannot be drawn, the reason is written **on the page** (library
+  not loaded, area without size, API unreachable) instead of failing silently,
+  and `?debug=1` prints the measurements (`library`, container size, node/edge
+  counts, zoom) inside the graph area — useful when the browser console is not
+  reachable, e.g. on a phone.
 
 ---
 
