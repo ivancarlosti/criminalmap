@@ -1,58 +1,70 @@
 <main class="app-main">
   <aside class="input-panel">
-    {{#if SAVED_MAP_URL}}
-      <div class="banner banner-success">
-        <p><span data-i18n="savedMapNotice">Map saved:</span>
-          <a href="{{SAVED_MAP_URL}}" id="saved-map-url">{{SAVED_MAP_URL}}</a></p>
-        <button type="button" id="copy-map-url" class="secondary-button" data-map-url="{{SAVED_MAP_URL}}" data-i18n="copyLinkButton">Copy link</button>
-      </div>
+    {{#if VALIDATION_ERROR}}
+      <div class="banner banner-error" data-i18n="{{VALIDATION_ERROR}}"></div>
     {{/if}}
 
-    {{#if EDITOR_PANEL}}
-      <label class="field-label" for="relation-input" data-i18n="textareaLabel">Texto das relações</label>
-      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder">[Flávio Bolsonaro] -> [Fabrício Queiroz] : Rachadinha (Desvio de salários) | Fontes: https://noticia1.com/rachadinha, https://noticia2.com/relatorio-coaf
-[Flávio Bolsonaro] -> [Fabrício Queiroz] : Lavagem de Dinheiro (Loja de Chocolates) | Fontes: https://noticia3.com/chocolates
-[Fabrício Queiroz] -> [Milícia de Rio das Pedras] : Ligação com milicianos | Fontes: https://noticia4.com/milicia
-[Victor (O Chefe)] -> [Marcos (O Capanga)] : Emprega e dá ordens para | Fontes: https://inquerito.gov/pag12
-[Victor (O Chefe)] -> [Sr. Silva (Contador)] : Usa para lavar dinheiro | Fontes: 
-[Inspetor Carlos] -> [Victor (O Chefe)] : Recebe propina de | Fontes: https://audio-vazado.com/carlos
-[Ana (Testemunha)] -> [Jornalista Investigativo] : Forneceu provas em segredo | Fontes: 
-[Jornalista Investigativo] -> [Importadora Global] : Publicou dossiê sobre | Fontes: https://jornal.com/dossie-global
-[Importadora Global] -> [Sr. Silva (Contador)] : Fachada gerenciada por | Fontes: </textarea>
-      <div class="button-row">
-        <button id="parse-button" type="button" data-i18n="parseButton">Processar</button>
-        <button id="clear-button" type="button" class="secondary-button" data-i18n="clearButton">Limpar</button>
-      </div>
-    {{/if}}
-
-    {{#if READ_ONLY_NOTICE}}
-      <p class="panel-note" data-i18n="readOnlyNotice">This map is read-only. Sign in as administrator to edit it.</p>
-    {{/if}}
-
-    {{#if IS_ADMIN}}
-      <details class="save-map-panel" open>
-        <summary data-i18n="saveAsMapHeading">Save current graph as map</summary>
-        <form method="post" action="/admin/maps" class="save-map-form">
+    {{#if CREATE_PANEL}}
+      <section class="card map-create-card">
+        <h2 class="card-title" data-i18n="createMapHeading">Create a new map</h2>
+        <p class="field-help" data-i18n="createMapHelp">The map is created empty and opened for editing.</p>
+        <form method="post" action="/admin/maps" class="stacked-form">
           <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
-          <input type="hidden" name="return_to" value="/">
-          <label class="field-label" for="map-title" data-i18n="mapTitleLabel">Title</label>
-          <input id="map-title" type="text" name="title" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
-          <label class="field-label" for="map-description" data-i18n="mapDescriptionLabel">Description</label>
-          <textarea id="map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary"></textarea>
+          <label class="field-label" for="new-map-title" data-i18n="mapTitleLabel">Title</label>
+          <input id="new-map-title" type="text" name="title" value="{{NEW_MAP_TITLE}}" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
+          <label class="field-label" for="new-map-description" data-i18n="mapDescriptionLabel">Description</label>
+          <textarea id="new-map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary">{{NEW_MAP_DESCRIPTION}}</textarea>
           <label class="checkbox-row">
             <input type="hidden" name="is_public" value="0">
             <input type="checkbox" name="is_public" value="1" checked>
             <span data-i18n="mapPublicLabel">Publicly readable</span>
           </label>
-          <button type="submit" data-i18n="saveMapButton">Save map</button>
+          <button type="submit" data-i18n="createMapButton">Create map</button>
         </form>
-      </details>
+      </section>
     {{/if}}
+
+    <section class="card map-picker-card">
+      <h2 class="card-title" data-i18n="mapListHeading">Maps</h2>
+
+      {{#if MAPS_EMPTY}}
+        <p class="field-help" data-i18n="mapListEmpty">No maps published yet.</p>
+      {{/if}}
+
+      {{#if MAPS_LISTED}}
+        <p class="field-help" data-i18n="mapListHelp">Pick a map to preview it here.</p>
+        <ul class="map-picker">
+          {{#each MAPS}}
+            <li class="map-picker-item {{selected_class}}">
+              <a class="map-picker-link" href="{{select_url}}" {{{current_attr}}}>
+                <span class="map-picker-title">{{title}}</span>
+                <span class="map-picker-counts">{{node_count}} / {{edge_count}}</span>
+                {{#if is_private}}<span class="map-row-badge" data-i18n="mapPrivate">Private</span>{{/if}}
+              </a>
+              <a class="map-picker-open" href="{{url}}" target="_blank" rel="noopener noreferrer" data-i18n="{{open_label_key}}">Open</a>
+            </li>
+          {{/each}}
+        </ul>
+      {{/if}}
+    </section>
   </aside>
 
   <section class="network-panel">
-    <div id="network" data-source="/api/graph"></div>
-    <div id="network-message" class="network-message" hidden></div>
+    {{#if SELECTED_MAP}}
+      <header class="map-preview-header">
+        <h2 class="map-title">{{SELECTED_MAP_TITLE}}</h2>
+        <p class="map-description">{{SELECTED_MAP_DESCRIPTION}}</p>
+        <p class="map-meta">
+          <span data-i18n="mapMetaUpdated">Updated</span> {{SELECTED_MAP_UPDATED}}
+          &middot; {{SELECTED_MAP_COUNTS}}
+        </p>
+        <div class="button-row">
+          <a class="button-link" href="{{SELECTED_MAP_URL}}" data-i18n="mapPreviewOpen">Open map</a>
+        </div>
+      </header>
+      <div id="network" data-source="{{MAP_GRAPH_SOURCE}}"></div>
+      <div id="network-message" class="network-message" hidden></div>
+    {{/if}}
   </section>
 </main>
 

@@ -25,7 +25,6 @@ const DEFAULT_SETTINGS = {
   map_short_id_length: '6',
   map_short_id_uppercase: '0',
   map_short_id_numbers: '0',
-  show_public_editor: '1',
   site_logo_url: '',
   favicon_url: '',
   site_url: '',
@@ -51,7 +50,6 @@ const PUBLIC_KEYS = [
   'theme_color_light',
   'theme_color_dark',
   'map_path_prefix',
-  'show_public_editor',
   'robots_enabled',
   'sitemap_enabled',
   'site_logo_url',
@@ -270,7 +268,6 @@ function publicSettings() {
   result.default_theme = defaultTheme();
   result.map_path_prefix = mapPathPrefix();
   result.map_short_id_length = shortIdLength();
-  result.show_public_editor = getBool('show_public_editor', true);
   result.robots_enabled = getBool('robots_enabled', true);
   result.sitemap_enabled = getBool('sitemap_enabled', false);
 

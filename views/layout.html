@@ -53,10 +53,11 @@
       <p id="page-subtitle">{{SITE_SUBTITLE}}</p>
     </div>
     <nav class="header-nav">
-      {{#if SHOW_EDITOR_LINK}}
-        <a class="nav-link" href="/" data-i18n="navEditor">Editor</a>
+      {{#if SHOW_HOME_LINK}}
+        <a class="nav-link" href="/" data-i18n="navHome">Home</a>
       {{/if}}
       {{#if IS_ADMIN}}
+        <a class="nav-link nav-link-accent" href="/?create=1" data-i18n="navCreateMap">Create map</a>
         <a class="nav-link nav-link-accent" href="/admin/settings" data-i18n="navSettings">Settings</a>
         <a class="nav-link nav-link-accent" href="/admin/maps" data-i18n="navMaps">Maps</a>
       {{/if}}

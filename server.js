@@ -5,10 +5,9 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 
-const { initDatabase, getPool } = require('./src/db');
+const { initDatabase } = require('./src/db');
 const { parseTextWithDetails } = require('./src/parser');
-const { seedDatabase, insertRelations } = require('./src/seed');
-const graph = require('./src/graph');
+const { EXAMPLE_TEXT, exampleMapDescription, exampleMapTitle } = require('./src/seed');
 const locales = require('./src/locales');
 const maps = require('./src/maps');
 const render = require('./src/render');
@@ -126,14 +125,20 @@ function safeNext(value) {
 }
 
 /**
- * Restrict return targets to known pages.
+ * Restrict return targets to known pages (the home page, the admin pages and a
+ * saved map page).
  *
  * @param {unknown} value
  * @returns {string}
  */
 function safeReturn(value) {
   const target = safeNext(value);
-  return ['/', '/admin/maps', '/admin/settings'].includes(target) ? target : '';
+
+  if (['/', '/admin/maps', '/admin/settings'].includes(target)) {
+    return target;
+  }
+
+  return new RegExp(`^/${settings.mapPathPrefix()}/[A-Za-z0-9]{3,32}$`).test(target) ? target : '';
 }
 
 /**
@@ -250,7 +255,6 @@ function pageData(req, options = {}) {
       themeColors,
       mapPathPrefix: settings.mapPathPrefix(),
       isAdmin,
-      publicEditor: settings.getBool('show_public_editor', true),
     }),
     SUPPORTED_LOCALES: locales.list().map((entry) => ({
       code: entry.code,
@@ -260,7 +264,7 @@ function pageData(req, options = {}) {
     IS_ADMIN: isAdmin,
     NOT_ADMIN: !isAdmin,
     SHOW_LOGIN_LINK: !isAdmin && auth.isAccount(),
-    SHOW_EDITOR_LINK: options.showEditorLink === true,
+    SHOW_HOME_LINK: options.showHomeLink === true,
     CSRF_TOKEN: auth.csrfToken(req),
     PAGE_SCRIPTS: options.pageScripts || '',
     CUSTOM_HEAD: settings.get('custom_head', ''),
@@ -285,33 +289,6 @@ const ADMIN_SCRIPT = '<script src="/js/admin.js" defer></script>';
  */
 function escapeXml(value) {
   return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-/**
- * The editor is open to everybody unless the admin disables it.
- *
- * @param {import('express').Request} req
- * @returns {boolean}
- */
-function canEdit(req) {
-  return settings.getBool('show_public_editor', true) || auth.isAdmin(req);
-}
-
-/**
- * Guard the graph-writing API endpoints.
- *
- * @param {import('express').Request} req
- * @param {import('express').Response} res
- * @param {Function} next
- */
-function requireEditor(req, res, next) {
-  if (canEdit(req)) {
-    return next();
-  }
-
-  return res.status(403).json({
-    error: 'Editing is restricted to administrators. Sign in to continue.',
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -401,25 +378,14 @@ app.get('/api/settings', (req, res) => {
   });
 });
 
-// GET /api/graph -> full working graph payload.
-app.get('/api/graph', asyncHandler(async (req, res) => {
-  res.json(await graph.fetchGraph());
-}));
+// POST /api/maps/:shortId/parse -> append parsed relations to a saved map.
+app.post('/api/maps/:shortId/parse', auth.requireAdmin, asyncHandler(async (req, res) => {
+  const map = await maps.findMapByShortId(req.params.shortId);
 
-// GET /api/nodes -> nodes subset.
-app.get('/api/nodes', asyncHandler(async (req, res) => {
-  const { nodes } = await graph.fetchGraph();
-  res.json({ nodes });
-}));
+  if (!map) {
+    return res.status(404).json({ error: 'Map not found.' });
+  }
 
-// GET /api/edges -> edges subset.
-app.get('/api/edges', asyncHandler(async (req, res) => {
-  const { edges } = await graph.fetchGraph();
-  res.json({ edges });
-}));
-
-// POST /api/parse -> parse text, upsert nodes, insert edges, return the graph.
-app.post('/api/parse', requireEditor, asyncHandler(async (req, res) => {
   const text = req.body && typeof req.body.text === 'string' ? req.body.text : '';
 
   if (text.trim() === '') {
@@ -437,22 +403,35 @@ app.post('/api/parse', requireEditor, asyncHandler(async (req, res) => {
     });
   }
 
-  await insertRelations(getPool(), relations);
-  return res.json(await graph.fetchGraph());
+  await maps.insertMapRelations(map.id, relations);
+
+  const payload = await maps.fetchMapGraph(map.id);
+  const updated = await maps.findMapById(map.id);
+
+  return res.json({
+    map: {
+      short_id: map.short_id,
+      title: map.title,
+      description: map.description,
+      updated_at: updated ? updated.updated_at : map.updated_at,
+      url: mapUrl(req, map.short_id),
+    },
+    nodes: payload.nodes,
+    edges: payload.edges,
+  });
 }));
 
-// DELETE /api/graph -> remove every edge and node from the working graph.
-app.delete('/api/graph', requireEditor, asyncHandler(async (req, res) => {
-  const removed = await graph.clearGraph();
-  res.json({ success: true, removed });
-}));
+// DELETE /api/maps/:shortId/graph -> empty a saved map (the map itself stays).
+app.delete('/api/maps/:shortId/graph', auth.requireAdmin, asyncHandler(async (req, res) => {
+  const map = await maps.findMapByShortId(req.params.shortId);
 
-// POST /api/seed -> wipe the working graph and re-run the seed data.
-app.post('/api/seed', requireEditor, asyncHandler(async (req, res) => {
-  const pool = getPool();
-  await graph.clearGraph(pool);
-  await seedDatabase(pool);
-  res.json(await graph.fetchGraph());
+  if (!map) {
+    return res.status(404).json({ error: 'Map not found.' });
+  }
+
+  const removed = await maps.clearMapGraph(map.id);
+
+  return res.json({ success: true, removed });
 }));
 
 // GET /api/maps -> saved maps (administrators only).
@@ -594,9 +573,9 @@ function adminSettingsData(req, state = {}) {
       title: `${settings.siteTitle(currentLocale(req))} — Admin`,
       robotsMeta: NOINDEX_META,
       pageScripts: ADMIN_SCRIPT,
+      showHomeLink: true,
     }),
     SAVED_OK: state.saved === true,
-    CLEARED_OK: state.cleared === true,
     SEEDED_OK: state.seeded === true,
     VALIDATION_ERROR: state.error || '',
     LOCALES: locales.list().map((entry) => ({
@@ -616,9 +595,6 @@ function adminSettingsData(req, state = {}) {
     MAP_SHORT_ID_LENGTH: read('map_short_id_length', String(settings.shortIdLength())),
     SHORT_ID_UPPERCASE: source ? checkboxValue(source, 'map_short_id_uppercase') : settings.shortIdUppercase(),
     SHORT_ID_NUMBERS: source ? checkboxValue(source, 'map_short_id_numbers') : settings.shortIdNumbers(),
-    SHOW_PUBLIC_EDITOR: source
-      ? checkboxValue(source, 'show_public_editor')
-      : settings.getBool('show_public_editor', true),
     ROBOTS_ENABLED: source ? checkboxValue(source, 'robots_enabled') : settings.getBool('robots_enabled', true),
     ROBOTS_CONTENT: read('robots_content', settings.get('robots_content', '')),
     SITEMAP_ENABLED: source ? checkboxValue(source, 'sitemap_enabled') : settings.getBool('sitemap_enabled', false),
@@ -676,7 +652,6 @@ async function persistSettings(body) {
     ['map_short_id_length', String(Number.parseInt(fieldValue(body.map_short_id_length), 10) || 6)],
     ['map_short_id_uppercase', checkboxValue(body, 'map_short_id_uppercase') ? '1' : '0'],
     ['map_short_id_numbers', checkboxValue(body, 'map_short_id_numbers') ? '1' : '0'],
-    ['show_public_editor', checkboxValue(body, 'show_public_editor') ? '1' : '0'],
     ['site_logo_url', fieldValue(body.site_logo_url).trim()],
     ['favicon_url', fieldValue(body.favicon_url).trim()],
     ['site_url', fieldValue(body.site_url).trim()],
@@ -716,11 +691,10 @@ async function adminMapsData(req, state = {}) {
       title: `${settings.siteTitle(currentLocale(req))} — Maps`,
       robotsMeta: NOINDEX_META,
       pageScripts: ADMIN_SCRIPT,
+      showHomeLink: true,
     }),
-    SAVED_OK: state.saved === true,
     DELETED_OK: state.deleted === true,
     UPDATED_OK: state.updated === true,
-    LOADED_OK: state.loaded === true,
     VALIDATION_ERROR: state.error || '',
     MAPS_EMPTY: all.length === 0,
     MAPS: all.map((map) => ({
@@ -747,7 +721,6 @@ app.get('/admin', auth.requireAdmin, (req, res) => {
 app.get('/admin/settings', auth.requireAdmin, (req, res) => {
   res.send(render.renderPage('admin/settings.html', adminSettingsData(req, {
     saved: req.query.saved === '1',
-    cleared: req.query.cleared === '1',
     seeded: req.query.seeded === '1',
   })));
 });
@@ -771,38 +744,32 @@ app.post('/admin/settings', auth.requireAdmin, auth.requireCsrf, asyncHandler(as
 // GET /admin/maps -> list and manage saved maps.
 app.get('/admin/maps', auth.requireAdmin, asyncHandler(async (req, res) => {
   res.send(render.renderPage('admin/maps.html', await adminMapsData(req, {
-    saved: req.query.saved === '1',
     deleted: req.query.deleted === '1',
     updated: req.query.updated === '1',
-    loaded: req.query.loaded === '1',
   })));
 }));
 
-// POST /admin/maps -> snapshot the working graph into a new saved map.
+// POST /admin/maps -> create an empty map and open it for editing.
 app.post('/admin/maps', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
   const title = fieldValue(req.body.title).trim();
-  const returnTo = safeReturn(req.body.return_to) || '/admin/maps';
+  const description = fieldValue(req.body.description);
 
   if (title === '') {
-    if (returnTo === '/admin/maps') {
-      return res.status(400).send(render.renderPage(
-        'admin/maps.html',
-        await adminMapsData(req, { error: 'errorMapTitleRequired' })
-      ));
-    }
-
-    return res.redirect(`${returnTo}${returnTo.includes('?') ? '&' : '?'}error=1`);
+    return res.status(400).send(render.renderPage('index.html', await homeData(req, {
+      create: true,
+      title,
+      description,
+      error: 'errorMapTitleRequired',
+    })));
   }
 
-  const map = await maps.createMapFromScratch({
+  const map = await maps.createMap({
     title,
-    description: fieldValue(req.body.description),
+    description,
     isPublic: checkboxValue(req.body, 'is_public'),
   });
 
-  const separator = returnTo.includes('?') ? '&' : '?';
-
-  return res.redirect(`${returnTo}${separator}saved=${encodeURIComponent(map.short_id)}`);
+  return res.redirect(`/${settings.mapPathPrefix()}/${map.short_id}`);
 }));
 
 // POST /admin/maps/:id/update -> rename / re-describe / toggle visibility.
@@ -819,33 +786,10 @@ app.post('/admin/maps/:id/update', auth.requireAdmin, auth.requireCsrf, asyncHan
     isPublic: checkboxValue(req.body, 'is_public'),
   });
 
-  return res.redirect('/admin/maps?updated=1');
-}));
+  const returnTo = safeReturn(req.body.return_to) || '/admin/maps';
+  const separator = returnTo.includes('?') ? '&' : '?';
 
-// POST /admin/maps/:id/replace -> replace a map snapshot with the working graph.
-app.post('/admin/maps/:id/replace', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
-  const map = await maps.findMapById(req.params.id);
-
-  if (!map) {
-    return res.status(404).type('text/plain').send('Map not found');
-  }
-
-  await maps.replaceMapGraphFromScratch(map.id);
-
-  return res.redirect('/admin/maps?updated=1');
-}));
-
-// POST /admin/maps/:id/load -> copy a map snapshot into the working graph.
-app.post('/admin/maps/:id/load', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
-  const map = await maps.findMapById(req.params.id);
-
-  if (!map) {
-    return res.status(404).type('text/plain').send('Map not found');
-  }
-
-  await maps.replaceScratchFromMap(map.id);
-
-  return res.redirect('/?loaded=1');
+  return res.redirect(`${returnTo}${separator}updated=1`);
 }));
 
 // POST /admin/maps/:id/delete -> remove a saved map.
@@ -855,18 +799,17 @@ app.post('/admin/maps/:id/delete', auth.requireAdmin, auth.requireCsrf, asyncHan
   return res.redirect('/admin/maps?deleted=1');
 }));
 
-// POST /admin/maintenance/clear -> empty the working graph.
-app.post('/admin/maintenance/clear', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
-  await graph.clearGraph();
+// POST /admin/maintenance/demo-map -> publish the example data as a new map.
+app.post('/admin/maintenance/demo-map', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
+  const locale = settings.defaultLocale();
+  const { relations } = parseTextWithDetails(EXAMPLE_TEXT);
+  const map = await maps.createMap({
+    title: exampleMapTitle(locale),
+    description: exampleMapDescription(locale),
+    isPublic: true,
+  });
 
-  return res.redirect('/admin/settings?cleared=1');
-}));
-
-// POST /admin/maintenance/seed -> restore the built-in example graph.
-app.post('/admin/maintenance/seed', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
-  const pool = getPool();
-  await graph.clearGraph(pool);
-  await seedDatabase(pool);
+  await maps.insertMapRelations(map.id, relations);
 
   return res.redirect('/admin/settings?seeded=1');
 }));
@@ -876,28 +819,76 @@ app.post('/admin/maintenance/seed', auth.requireAdmin, auth.requireCsrf, asyncHa
 // Pages
 // ---------------------------------------------------------------------------
 
-// GET / -> the working graph editor (or a read-only view for visitors).
+/**
+ * Format a timestamp as an ISO (YYYY-MM-DD) date.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
+function isoDate(value) {
+  return value ? new Date(value).toISOString().slice(0, 10) : '';
+}
+
+/**
+ * Build the data for the home page: every visible map, a randomly picked map
+ * (or the one requested through ?map=) and the preview of that map.
+ *
+ * @param {import('express').Request} req
+ * @param {{create?: boolean, title?: string, description?: string, error?: string}} [state]
+ * @returns {Promise<Object>}
+ */
+async function homeData(req, state = {}) {
+  const isAdmin = auth.isAdmin(req);
+  const prefix = settings.mapPathPrefix();
+  const all = await maps.listMaps({ publicOnly: !isAdmin });
+  const requested = typeof req.query.map === 'string' ? req.query.map.trim() : '';
+  const requestedMap = all.find((entry) => entry.short_id === requested) || null;
+  const selected = requestedMap
+    || (all.length > 0 ? all[Math.floor(Math.random() * all.length)] : null);
+
+  return {
+    ...pageData(req, { pageScripts: APP_SCRIPT }),
+    MAPS: all.map((map) => {
+      const isSelected = selected !== null && map.short_id === selected.short_id;
+
+      return {
+        id: map.id,
+        short_id: map.short_id,
+        title: map.title,
+        description: map.description,
+        is_public: map.is_public,
+        is_private: !map.is_public,
+        node_count: map.node_count,
+        edge_count: map.edge_count,
+        select_url: `/?map=${encodeURIComponent(map.short_id)}`,
+        url: `/${prefix}/${map.short_id}`,
+        selected_class: isSelected ? 'selected' : '',
+        current_attr: isSelected ? 'aria-current="true"' : '',
+        open_label_key: isAdmin ? 'mapOpenEdit' : 'mapOpenFullscreen',
+      };
+    }),
+    MAPS_LISTED: all.length > 0,
+    MAPS_EMPTY: all.length === 0,
+    SELECTED_MAP: selected !== null,
+    SELECTED_MAP_TITLE: selected ? selected.title : '',
+    SELECTED_MAP_DESCRIPTION: selected ? selected.description : '',
+    SELECTED_MAP_URL: selected ? `/${prefix}/${selected.short_id}` : '',
+    SELECTED_MAP_COUNTS: selected ? `${selected.node_count} / ${selected.edge_count}` : '',
+    SELECTED_MAP_UPDATED: selected ? isoDate(selected.updated_at) : '',
+    MAP_GRAPH_SOURCE: selected ? `/api/maps/${encodeURIComponent(selected.short_id)}` : '',
+    CREATE_PANEL: isAdmin && (state.create === true || req.query.create === '1'),
+    NEW_MAP_TITLE: state.title || '',
+    NEW_MAP_DESCRIPTION: state.description || '',
+    VALIDATION_ERROR: state.error || '',
+  };
+}
+
+// GET / -> map picker with a randomly selected preview.
 app.get('/', asyncHandler(async (req, res) => {
-  const data = pageData(req, { pageScripts: APP_SCRIPT });
-  const editable = canEdit(req);
-  const savedId = typeof req.query.saved === 'string' ? req.query.saved.trim() : '';
-
-  data.EDITOR_PANEL = editable;
-  data.READ_ONLY_NOTICE = !editable;
-  data.SAVED_MAP_URL = '';
-
-  if (savedId !== '') {
-    const map = await maps.findMapByShortId(savedId);
-
-    if (map) {
-      data.SAVED_MAP_URL = mapUrl(req, map.short_id);
-    }
-  }
-
-  res.send(render.renderPage('index.html', data));
+  res.send(render.renderPage('index.html', await homeData(req)));
 }));
 
-// GET /{map_path_prefix}/{shortId} -> public read-only view of a saved map.
+// GET /{map_path_prefix}/{shortId} -> saved map (editable for administrators).
 app.get(
   '/:prefix([a-z0-9_-]{1,16})/:shortId([A-Za-z0-9]{3,32})',
   asyncHandler(async (req, res, next) => {
@@ -912,19 +903,29 @@ app.get(
     }
 
     const locale = currentLocale(req);
+    const prefix = settings.mapPathPrefix();
     const data = pageData(req, {
       title: `${map.title} — ${settings.siteTitle(locale)}`,
       description: map.description || settings.siteSubtitle(locale),
-      canonicalPath: `/${settings.mapPathPrefix()}/${map.short_id}`,
+      canonicalPath: `/${prefix}/${map.short_id}`,
       ogType: 'article',
-      showEditorLink: true,
+      showHomeLink: true,
       pageScripts: APP_SCRIPT,
     });
 
+    data.MAP_ID = map.id;
     data.MAP_TITLE = map.title;
     data.MAP_DESCRIPTION = map.description;
     data.MAP_SHORT_ID = map.short_id;
-    data.MAP_UPDATED = map.updated_at ? new Date(map.updated_at).toISOString().slice(0, 10) : '';
+    data.MAP_UPDATED = isoDate(map.updated_at);
+    data.MAP_ABSOLUTE_URL = mapUrl(req, map.short_id);
+    data.CAN_EDIT_MAP = auth.isAdmin(req);
+    data.CHECKED_PUBLIC = map.is_public ? 'checked' : '';
+    data.DETAILS_ACTION = `/admin/maps/${map.id}/update`;
+    data.RETURN_TO = `/${prefix}/${map.short_id}`;
+    data.PARSE_ENDPOINT = `/api/maps/${map.short_id}/parse`;
+    data.CLEAR_ENDPOINT = `/api/maps/${map.short_id}/graph`;
+    data.UPDATED_OK = req.query.updated === '1';
 
     return res.send(render.renderPage('map.html', data));
   })
@@ -938,7 +939,7 @@ app.use((req, res) => {
      <title>404 — Not found</title></head>
      <body style="font-family:system-ui,sans-serif;padding:2rem">
      <h1>404</h1><p>The page you requested does not exist.</p>
-     <p><a href="/">Back to the map</a></p></body></html>`
+     <p><a href="/">Back to the maps</a></p></body></html>`
   );
 });
 
@@ -954,13 +955,42 @@ app.use((error, req, res, _next) => {
 });
 
 /**
- * Bootstrap: initialize the database (connect, migrate, seed), load the
- * settings cache and then start listening.
+ * Publish the staged example relations (or the legacy working graph) as the
+ * first saved map when the database does not have any map yet.
+ *
+ * @returns {Promise<void>}
+ */
+async function ensureInitialMap() {
+  const existing = await maps.listMaps();
+
+  if (existing.length > 0) {
+    return;
+  }
+
+  const locale = settings.defaultLocale();
+  const map = await maps.createMapFromScratch({
+    title: exampleMapTitle(locale),
+    description: exampleMapDescription(locale),
+    isPublic: true,
+  });
+
+  if (map) {
+    console.log(
+      `Initial map published: ${settings.mapPathPrefix()}/${map.short_id} (${map.title})`
+    );
+  }
+}
+
+/**
+ * Bootstrap: initialize the database (connect, migrate, stage the example
+ * data), publish the first map if needed, load the settings cache and then
+ * start listening.
  */
 async function main() {
   try {
     await initDatabase();
     await settings.load();
+    await ensureInitialMap();
 
     if (!auth.credentialsConfigured()) {
       console.warn(

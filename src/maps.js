@@ -3,13 +3,16 @@
 /**
  * Saved map repository.
  *
- * A saved map is a snapshot of the scratch graph (src/graph.js) stored in the
- * `maps` / `map_nodes` / `map_edges` tables. Only administrators create,
- * replace or delete maps; everybody can read a public map through its short URL.
+ * Maps are the editable unit of the application: a map lives in the `maps` /
+ * `map_nodes` / `map_edges` tables and is created, edited (relations added or
+ * cleared, title/description/visibility changed) and deleted by administrators.
+ * Visitors can only read the maps that are marked as public.
+ *
+ * `createMapFromScratch()` is only used by the bootstrap migration that
+ * publishes the legacy working graph (`nodes` / `edges`) as the first map.
  */
 
 const { getPool } = require('./db');
-const { parseSourcesJson } = require('./graph');
 const { uniqueForPool } = require('./shortid');
 
 const TITLE_MAX_LENGTH = 255;
@@ -42,17 +45,45 @@ function normalizeDescription(value) {
 }
 
 /**
- * List every saved map with its node/edge counts.
+ * Convert a sources_json column value into a plain JavaScript array.
+ * Handles both already-parsed JSON (mysql2 may auto-parse) and raw strings.
  *
- * @param {import('mysql2/promise').Pool} [pool]
+ * @param {unknown} value
+ * @returns {string[]}
+ */
+function parseSourcesJson(value) {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+/**
+ * List saved maps with their node/edge counts.
+ *
+ * @param {Object} [options]
+ * @param {boolean} [options.publicOnly] - only published maps (visitor facing)
+ * @param {import('mysql2/promise').Pool} [options.pool]
  * @returns {Promise<Array>}
  */
-async function listMaps(pool = getPool()) {
+async function listMaps(options = {}) {
+  const { publicOnly = false, pool = getPool() } = options;
   const [rows] = await pool.query(
     `SELECT m.id, m.short_id, m.title, m.description, m.is_public, m.created_at, m.updated_at,
             (SELECT COUNT(*) FROM map_nodes n WHERE n.map_id = m.id) AS node_count,
             (SELECT COUNT(*) FROM map_edges e WHERE e.map_id = m.id) AS edge_count
        FROM maps m
+      ${publicOnly ? 'WHERE m.is_public = 1' : ''}
       ORDER BY m.updated_at DESC, m.id DESC`
   );
 
@@ -204,7 +235,31 @@ async function copyScratchEdgesIntoMap(mapId, pool) {
 }
 
 /**
- * Freeze the current scratch graph into a brand new saved map.
+ * Create an empty saved map.
+ *
+ * @param {{title: string, description?: string, isPublic?: boolean}} input
+ * @param {import('mysql2/promise').Pool} [pool]
+ * @returns {Promise<Object|null>}
+ */
+async function createMap(input, pool = getPool()) {
+  const title = normalizeTitle(input.title) || 'Untitled map';
+  const description = normalizeDescription(input.description);
+  const isPublic = input.isPublic === false ? 0 : 1;
+  const shortId = await uniqueForPool(pool);
+
+  const [result] = await pool.query(
+    'INSERT INTO maps (short_id, title, description, is_public) VALUES (?, ?, ?, ?)',
+    [shortId, title, description, isPublic]
+  );
+
+  return findMapById(Number(result.insertId), pool);
+}
+
+/**
+ * Publish the legacy working graph (`nodes` / `edges`) as a new saved map.
+ *
+ * Used by the bootstrap migration (see ensureInitialMap() in server.js) and by
+ * the "restore example map" maintenance action.
  *
  * @param {{title: string, description?: string, isPublic?: boolean}} input
  * @param {import('mysql2/promise').Pool} [pool]
@@ -230,50 +285,86 @@ async function createMapFromScratch(input, pool = getPool()) {
 }
 
 /**
- * Replace a saved map's snapshot with the current scratch graph.
+ * Upsert a map node by label and return its id.
  *
+ * @param {import('mysql2/promise').Pool} pool
  * @param {number} mapId
- * @param {import('mysql2/promise').Pool} [pool]
- * @returns {Promise<Object|null>}
+ * @param {string} label
+ * @param {string} [type]
+ * @returns {Promise<number>}
  */
-async function replaceMapGraphFromScratch(mapId, pool = getPool()) {
-  await pool.query('DELETE FROM map_edges WHERE map_id = ?', [mapId]);
-  await pool.query('DELETE FROM map_nodes WHERE map_id = ?', [mapId]);
+async function upsertMapNode(pool, mapId, label, type = 'person') {
+  await pool.query(
+    'INSERT INTO map_nodes (map_id, label, type) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE label = VALUES(label)',
+    [mapId, label, type]
+  );
 
-  await copyScratchNodesIntoMap(mapId, pool);
-  await copyScratchEdgesIntoMap(mapId, pool);
-  await pool.query('UPDATE maps SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [mapId]);
+  const [rows] = await pool.query(
+    'SELECT id FROM map_nodes WHERE map_id = ? AND label = ? LIMIT 1',
+    [mapId, label]
+  );
 
-  return findMapById(mapId, pool);
+  return rows[0].id;
 }
 
 /**
- * Load a saved map's snapshot into the scratch graph ("open in editor").
+ * Add parsed relations to a saved map: nodes are upserted by label and every
+ * relation becomes a NEW edge row (duplicate edges are allowed on purpose).
+ *
+ * @param {number} mapId
+ * @param {Array<{from: string, to: string, topic: string, sources: string[]}>} relations
+ * @param {import('mysql2/promise').Pool} [pool]
+ * @returns {Promise<{nodeCount: number, edgeCount: number}>}
+ */
+async function insertMapRelations(mapId, relations, pool = getPool()) {
+  const labelToId = new Map();
+
+  async function getNodeId(label) {
+    if (labelToId.has(label)) {
+      return labelToId.get(label);
+    }
+
+    const id = await upsertMapNode(pool, mapId, label);
+    labelToId.set(label, id);
+    return id;
+  }
+
+  let edgeCount = 0;
+
+  for (const relation of relations) {
+    const fromNodeId = await getNodeId(relation.from);
+    const toNodeId = await getNodeId(relation.to);
+
+    await pool.query(
+      'INSERT INTO map_edges (map_id, from_node, to_node, topic_description, sources_json) VALUES (?, ?, ?, ?, ?)',
+      [mapId, fromNodeId, toNodeId, relation.topic, JSON.stringify(relation.sources || [])]
+    );
+
+    edgeCount += 1;
+  }
+
+  await pool.query('UPDATE maps SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [mapId]);
+
+  return { nodeCount: labelToId.size, edgeCount };
+}
+
+/**
+ * Remove every node and edge stored in a saved map (the map itself is kept).
  *
  * @param {number} mapId
  * @param {import('mysql2/promise').Pool} [pool]
- * @returns {Promise<void>}
+ * @returns {Promise<{nodes: number, edges: number}>}
  */
-async function replaceScratchFromMap(mapId, pool = getPool()) {
-  await pool.query('DELETE FROM edges');
-  await pool.query('DELETE FROM nodes');
+async function clearMapGraph(mapId, pool = getPool()) {
+  const [edgeResult] = await pool.query('DELETE FROM map_edges WHERE map_id = ?', [mapId]);
+  const [nodeResult] = await pool.query('DELETE FROM map_nodes WHERE map_id = ?', [mapId]);
 
-  await pool.query(
-    'INSERT INTO nodes (label, type) SELECT label, type FROM map_nodes WHERE map_id = ?',
-    [mapId]
-  );
+  await pool.query('UPDATE maps SET updated_at = CURRENT_TIMESTAMP WHERE id = ?', [mapId]);
 
-  await pool.query(
-    `INSERT INTO edges (from_node, to_node, topic_description, sources_json)
-     SELECT sf.id, st.id, e.topic_description, e.sources_json
-       FROM map_edges e
-       JOIN map_nodes mnf ON mnf.id = e.from_node
-       JOIN map_nodes mnt ON mnt.id = e.to_node
-       JOIN nodes sf      ON sf.label = mnf.label
-       JOIN nodes st      ON st.label = mnt.label
-      WHERE e.map_id = ?`,
-    [mapId]
-  );
+  return {
+    nodes: Number(nodeResult.affectedRows) || 0,
+    edges: Number(edgeResult.affectedRows) || 0,
+  };
 }
 
 /**
@@ -290,7 +381,7 @@ async function updateMapMeta(id, input, pool = getPool()) {
   const isPublic = input.isPublic === false ? 0 : 1;
 
   await pool.query(
-    'UPDATE maps SET title = ?, description = ?, is_public = ? WHERE id = ?',
+    'UPDATE maps SET title = ?, description = ?, is_public = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
     [title, description, isPublic, id]
   );
 
@@ -312,18 +403,18 @@ async function deleteMap(id, pool = getPool()) {
 module.exports = {
   DESCRIPTION_MAX_LENGTH,
   TITLE_MAX_LENGTH,
-  copyScratchEdgesIntoMap,
-  copyScratchNodesIntoMap,
+  clearMapGraph,
+  createMap,
   createMapFromScratch,
   deleteMap,
   fetchMapGraph,
   findMapById,
   findMapByShortId,
+  insertMapRelations,
   listMaps,
   normalizeDescription,
   normalizeTitle,
-  replaceMapGraphFromScratch,
-  replaceScratchFromMap,
+  parseSourcesJson,
   uniqueForPool,
   updateMapMeta,
 };

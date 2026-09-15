@@ -34,7 +34,8 @@ edge with a topic description and a list of sources.
 The system consists of:
 
 - A **Node.js/Express** API that stores the graph in **MariaDB** and renders the
-  HTML pages (the editor, the login form, the admin panel and public map pages).
+  HTML pages (the map picker home page, the map pages, the login form and the
+  admin panel).
 - A **plain-text parser** that accepts one relation per line and extracts the
   `from` node, `to` node, topic description, and optional `Fontes:` (sources).
 - A **Vanilla JS frontend** that renders the graph with
@@ -43,10 +44,12 @@ The system consists of:
 - An **embedded migration and seed**: on startup the API creates the database
   (if needed), applies [`db/schema.sql`](db/schema.sql:1), and inserts example
   data when the `nodes` table is empty.
-- A **working graph** (the "scratch" canvas at `/`) that can be pasted into,
-  processed and **cleared** by anybody by default, plus **saved maps**: frozen
-  snapshots that only administrators can create, replace or delete and that
-  anybody can read through a short URL such as `/m/abcxyz`.
+- A **map picker home page** (`/`): every visible map is listed, one of them
+  (random, or the one requested through `?map=…`) is highlighted and previewed
+  on the right. Each entry links to the map in full screen.
+- **Saved maps** (`/m/abcxyz`) are the editable unit of the application. Public
+  maps can be read by anybody; administrators opening the same URL get an editor
+  for the map's relations plus its title, description and visibility.
 - An **admin panel** behind an e-mail/password login where site identity,
   design, map URLs, web standards, custom HTML and maintenance actions are
   configured.
@@ -106,8 +109,8 @@ The second line produces an edge with an empty `sources` array, and the third
 line has no `Fontes:` section at all.
 
 Lines that do not match the pattern are ignored by the parser. The
-`POST /api/parse` endpoint reports them as `invalidLines` when **no** valid line
-exists, so callers can debug malformed input.
+`POST /api/maps/{shortId}/parse` endpoint reports them as `invalidLines` when
+**no** valid line exists, so callers can debug malformed input.
 
 ---
 
@@ -122,9 +125,8 @@ criminalmap/
 ├── src/
 │   ├── db.js                     # MariaDB bootstrap (connect, migrate, seed)
 │   ├── parser.js                 # Plain-text relation parser
-│   ├── seed.js                   # Seed data and node/edge upsert helpers
-│   ├── graph.js                  # Working graph read/clear helpers
-│   ├── maps.js                   # Saved map snapshots (create/replace/load)
+│   ├── seed.js                   # Example relations and localized demo map labels
+│   ├── maps.js                   # Saved maps: create, edit relations, clear
 │   ├── shortid.js                # Random short-URL ID generator
 │   ├── settings.js               # Cached key/value settings store
 │   ├── locales.js                # Supported locale catalog
@@ -134,19 +136,19 @@ criminalmap/
 │       └── hash-password.js      # `npm run hash-password` helper
 ├── views/                        # Server-rendered HTML templates (not public)
 │   ├── layout.html               # Shared shell: meta, theme, language, nav
-│   ├── index.html                # Editor / read-only working graph
-│   ├── map.html                  # Public read-only saved map
+│   ├── index.html                # Home: map picker + selected map preview
+│   ├── map.html                  # Saved map (editable for administrators)
 │   ├── login.html                # Admin login form
 │   └── admin/
 │       ├── settings.html         # Tabbed admin settings
 │       └── maps.html             # Saved map management
 ├── db/
-│   └── schema.sql                # nodes, edges, settings, maps tables
+│   └── schema.sql                # maps/map_nodes/map_edges, settings (+ legacy staging tables)
 ├── public/                       # Statically served assets
 │   ├── css/
 │   │   └── style.css             # Noir dark theme + parchment light theme
 │   ├── js/
-│   │   ├── app.js                # Graph rendering, modals, clear, copy link
+│   │   ├── app.js                # Graph rendering, modals, map editing, copy link
 │   │   ├── i18n.js               # Locale loading and translation helpers
 │   │   ├── theme.js              # Dark/light toggle and theme-color meta
 │   │   └── admin.js              # Admin tabs and confirm dialogs
@@ -223,7 +225,7 @@ openssl rand -hex 32
 ```
 
 Without credentials the admin panel cannot be used (the login form reports that
-authentication is not configured); the public editor keeps working.
+authentication is not configured); every map stays read-only for visitors.
 
 ### 3. Start the server
 
@@ -237,17 +239,20 @@ The server:
 2. Creates the database if it does not exist.
 3. Applies [`db/schema.sql`](db/schema.sql:1) — the `CREATE TABLE IF NOT EXISTS`
    statements make the migration idempotent.
-4. Checks the `nodes` table; if it is empty, it seeds the example graph from
+4. Checks the `nodes` table; if it is empty, it stages the example relations from
    [`src/seed.js`](src/seed.js:12).
-5. Loads the settings cache from the `settings` table (defaults are used for
+5. Publishes the first map when the database has no map yet: either from the
+   staged example relations or from an existing working graph (upgrade), so the
+   home page always has content.
+6. Loads the settings cache from the `settings` table (defaults are used for
    missing keys, so an existing database needs no manual migration).
-6. Starts listening, serves the static assets from [`public/`](public/js/app.js:1)
+7. Starts listening, serves the static assets from [`public/`](public/js/app.js:1)
    and renders the HTML pages from [`views/`](views/index.html:1).
 
 ### 4. Open the browser
 
-Visit <http://localhost:8080>. The example graph loads automatically from
-`GET /api/graph`.
+Visit <http://localhost:8080>. The map picker loads and previews a randomly
+selected map (`GET /api/maps/{shortId}`).
 
 ---
 
@@ -346,8 +351,8 @@ Log out with the **Logout** button in the header (`POST /auth/logout`).
 
 | Path                   | Access    | Purpose                                    |
 | ---------------------- | --------- | ------------------------------------------ |
-| `/`                    | public    | Working graph editor (read-only when the public editor is disabled) |
-| `/{prefix}/{shortId}`  | public    | Saved map (only when published)            |
+| `/`                    | public    | Home: map picker with a randomly selected preview |
+| `/{prefix}/{shortId}`  | public    | Saved map (editable when signed in as admin) |
 | `/auth/login`          | public    | Login form (`GET`) and login (`POST`)      |
 | `/auth/logout`         | admin     | Ends the session                           |
 | `/admin`               | admin     | Redirects to `/admin/settings`             |
@@ -362,28 +367,28 @@ Log out with the **Logout** button in the header (`POST /auth/logout`).
 - **Appearance** — site title and subtitle **per language**, logo and favicon
   URLs, default language, default theme and the mobile theme colors.
 - **Maps** — the public URL directory (`/m/…` by default), the short ID length
-  (3–32, default 6), whether uppercase letters and digits are allowed in new
-  links, and whether visitors may edit and clear the working graph.
+  (3–32, default 6), and whether uppercase letters and digits are allowed in new
+  links.
 - **Web Standards** — `robots.txt` toggle and content, `sitemap.xml` toggle, the
   canonical site URL, the default OpenGraph image and the X/Twitter account.
 - **HTML** — raw head injection, custom CSS and custom JavaScript applied to
   every page.
-- **Maintenance** — clear the working graph, restore the example data and see
-  which account is signed in.
+- **Maintenance** — create a brand new example map from the built-in demo data
+  and see which account is signed in.
 
 Settings are stored in the `settings` key/value table and cached in memory after
 every write, so changes apply immediately without a restart.
 
 ---
 
-## Saved maps and short URLs
+## Maps and short URLs
 
-The graph at `/` is a **working canvas**: it is stored in the `nodes` / `edges`
-tables and can be edited (and cleared) by anybody unless the admin turns the
-public editor off.
+The home page (`/`) is the **map picker**: it lists every map you may see (public
+maps for visitors, every map for administrators), highlights one of them — a
+random one on every load unless you pass `?map={shortId}` — and previews its
+graph on the right. Every entry has a full-screen link that opens the map page.
 
-**Saving a map** freezes the current canvas into the `maps` / `map_nodes` /
-`map_edges` tables and returns a short URL:
+Map pages live under a short URL:
 
 ```text
 https://criminalmap.example.com/m/abcxyz
@@ -393,22 +398,39 @@ https://criminalmap.example.com/m/abcxyz
   *Settings → Maps*.
 - The URL directory (`m` by default) is also configurable and validated to
   `[a-z0-9_-]+`.
-- Only administrators can create, replace, rename, publish/unpublish or delete
-  saved maps.
 - Anybody can read a published map — the page is rendered server-side with its
   own title, description, canonical link and OpenGraph tags.
-- Maps can be marked **private**, in which case only a signed-in administrator
-  can open them (everybody else gets a `404`).
+- Maps can be marked **private**: they are hidden from the home page and from the
+  sitemap, and only a signed-in administrator can open them (everybody else gets
+  a `404`).
 
-Admins can manage everything under **Admin → Maps**:
+### Creating and editing a map
 
-| Action                        | Effect                                              |
-| ----------------------------- | --------------------------------------------------- |
-| Save the working graph as map | Creates a new map from the current editor graph      |
-| Save details                  | Renames, re-describes or toggles the visibility      |
-| Replace with working graph    | Replaces the stored snapshot with the current graph  |
-| Load into editor              | Copies the snapshot back into the working canvas     |
-| Delete                        | Removes the map and all of its nodes and edges       |
+1. Sign in as administrator.
+2. Click **Create map** in the header (`/?create=1`), fill in the title, the
+   description and the visibility and submit. The map is created **empty** and
+   the browser is redirected to its own page.
+3. On the map page, paste new relations in the textarea and press **Process**
+   (`POST /api/maps/{shortId}/parse`) to append them. **Clear map**
+   (`DELETE /api/maps/{shortId}/graph`) empties the map without deleting it.
+4. **Save details** updates the title, description and visibility
+   (`POST /admin/maps/{id}/update`) and returns to the same page with a
+   confirmation banner.
+5. **Delete** removes the map and all of its nodes and edges.
+
+Administrators can also rename, re-describe and publish/unpublish any map from
+**Admin → Maps**, which lists every map with its short ID and node/edge counts.
+There is no separate "working graph" anymore: each map owns its nodes and edges.
+
+### Initial content
+
+On the first boot the example relations ([`src/seed.js`](src/seed.js:12)) are
+staged in the `nodes` / `edges` tables and published as the first map — "Mapa de
+exemplo", "Example map" or "Mapa de ejemplo", depending on the default locale. If
+a database already holds a working graph but no map (upgrade from `v1.x`), that
+graph is published as the first map instead, so no content is lost.
+**Settings → Maintenance → Create example map** publishes another demo map at any
+time.
 
 ---
 
@@ -450,20 +472,15 @@ setups.
 
 | Method | Path                | Access | Description                                                      |
 | ------ | ------------------- | ------ | ---------------------------------------------------------------- |
-| GET    | `/api/graph`        | public | Returns the full working graph (nodes + edges)                   |
-| GET    | `/api/nodes`        | public | Returns only the `nodes` array                                   |
-| GET    | `/api/edges`        | public | Returns only the `edges` array                                   |
 | GET    | `/api/settings`     | public | Public settings (default locale/theme, map prefix, locales, …)   |
 | GET    | `/api/maps`         | admin  | Lists saved maps with their public URLs                          |
 | GET    | `/api/maps/{shortId}` | public | Returns a saved map with its graph (published maps only)       |
-| POST   | `/api/parse`        | editor | Parses text, upserts nodes, inserts edges, returns the full graph |
-| DELETE | `/api/graph`        | editor | Deletes all edges and nodes from the working graph               |
-| POST   | `/api/seed`         | editor | Wipes the graph and re-runs the built-in seed data               |
+| POST   | `/api/maps/{shortId}/parse` | admin | Parses text, appends nodes/edges to the map, returns its graph |
+| DELETE | `/api/maps/{shortId}/graph` | admin | Empties the map (every node and edge; the map itself stays)  |
 
-**Access column**: `editor` means the endpoint is open to everybody while the
-public editor is enabled and restricted to administrators once it is disabled in
-*Settings → Maps* (a `403` JSON response is returned otherwise). `admin`
-endpoints require a signed-in administrator and answer `401` otherwise.
+**Access column**: `admin` endpoints require a signed-in administrator and answer
+`401` (JSON) otherwise; `GET /api/maps/{shortId}` answers `404` for private maps
+unless an administrator is signed in.
 
 ```bash
 curl http://localhost:8080/api/settings
@@ -488,16 +505,23 @@ curl http://localhost:8080/api/maps/abcxyz
 }
 ```
 
-### `GET /api/graph`
+### `GET /api/maps/{shortId}`
 
 ```bash
-curl http://localhost:8080/api/graph
+curl http://localhost:8080/api/maps/abcxyz
 ```
 
 Response:
 
 ```json
 {
+  "map": {
+    "short_id": "abcxyz",
+    "title": "Caso Queiroz",
+    "description": "Desvio de salários",
+    "updated_at": "2026-09-15T12:00:00.000Z",
+    "url": "http://localhost:8080/m/abcxyz"
+  },
   "nodes": [
     { "id": 1, "label": "Flávio Bolsonaro", "type": "person" },
     { "id": 2, "label": "Fabrício Queiroz", "type": "person" }
@@ -514,66 +538,49 @@ Response:
 }
 ```
 
-### `GET /api/nodes`
+Private maps answer `404` unless an administrator is signed in.
+
+### `POST /api/maps/{shortId}/parse`
+
+Appends relations to a saved map (administrator only). Request body:
+`{ "text": "..." }`.
 
 ```bash
-curl http://localhost:8080/api/nodes
-```
-
-Response:
-
-```json
-{
-  "nodes": [
-    { "id": 1, "label": "Flávio Bolsonaro", "type": "person" }
-  ]
-}
-```
-
-### `GET /api/edges`
-
-```bash
-curl http://localhost:8080/api/edges
-```
-
-Response:
-
-```json
-{
-  "edges": [
-    {
-      "id": 1,
-      "from": 1,
-      "to": 2,
-      "topic_description": "Rachadinha (Desvio de salários)",
-      "sources": ["https://noticia1.com/rachadinha"]
-    }
-  ]
-}
-```
-
-### `POST /api/parse`
-
-Request body: `{ "text": "..." }`.
-
-```bash
-curl -X POST http://localhost:8080/api/parse \
+curl -X POST http://localhost:8080/api/maps/abcxyz/parse \
   -H "Content-Type: application/json" \
+  -H "Cookie: criminalmap_session=..." \
   -d '{"text":"[A] -> [B] : Met once | Fontes: https://example.com/a"}'
 ```
 
-On success, the endpoint returns the full graph (same shape as
-`GET /api/graph`).
+On success it returns the map metadata plus the updated graph:
+
+```json
+{
+  "map": { "short_id": "abcxyz", "title": "Caso Queiroz", "updated_at": "...", "url": "..." },
+  "nodes": [ ... ],
+  "edges": [ ... ]
+}
+```
 
 Error cases:
 
+- Unknown `shortId` → `404` with `{ "error": "Map not found." }`
+- Not signed in → `401` with `{ "error": "Authentication required." }`
 - Empty `text` → `400` with `{ "error": "The \"text\" field is required and must not be empty." }`
 - No valid relation lines → `400` with `{ "error": "No valid relation lines were found in the provided text.", "invalidLines": [...] }`
 
-### `DELETE /api/graph`
+Nodes are upserted by label (`map_nodes` is unique per map + label), while every
+relation becomes a **new** edge row, so repeated relations stay as parallel
+edges.
+
+### `DELETE /api/maps/{shortId}/graph`
+
+Empties a saved map (administrator only). The map itself, its title, description
+and short URL are kept.
 
 ```bash
-curl -X DELETE http://localhost:8080/api/graph
+curl -X DELETE http://localhost:8080/api/maps/abcxyz/graph \
+  -H "Cookie: criminalmap_session=..."
 ```
 
 Response:
@@ -581,15 +588,6 @@ Response:
 ```json
 { "success": true, "removed": { "nodes": 10, "edges": 9 } }
 ```
-
-### `POST /api/seed`
-
-```bash
-curl -X POST http://localhost:8080/api/seed
-```
-
-Wipes the current graph, re-inserts the built-in example data from
-[`src/seed.js`](src/seed.js:12), and returns the full graph.
 
 ---
 

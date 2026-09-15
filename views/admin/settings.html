@@ -1,9 +1,5 @@
-{{#if CLEARED_OK}}
-  <div class="banner banner-success" data-i18n="maintenanceCleared">Working graph cleared.</div>
-{{/if}}
-
 {{#if SEEDED_OK}}
-  <div class="banner banner-success" data-i18n="maintenanceSeeded">Example data restored.</div>
+  <div class="banner banner-success" data-i18n="maintenanceMapSeeded">Example map created.</div>
 {{/if}}
 
 <main class="page">
@@ -111,13 +107,6 @@
       <span data-i18n="settingsMapShortIdNumbers">Allow digits in new map links</span>
     </label>
     <p class="field-help" data-i18n="settingsMapShortIdHelp">Only affects links created from now on. Existing links never change.</p>
-
-    <label class="checkbox-row">
-      <input type="hidden" name="show_public_editor" value="0">
-      <input type="checkbox" name="show_public_editor" value="1" {{#if SHOW_PUBLIC_EDITOR}}checked{{/if}}>
-      <span data-i18n="settingsShowPublicEditor">Let visitors edit and clear the working graph</span>
-    </label>
-    <p class="field-help" data-i18n="settingsShowPublicEditorHelp">When disabled, only administrators see the text editor and the clear button; visitors get a read-only view.</p>
   </section>
 
   <section class="tab-panel card hidden" data-tab="webstandards" role="tabpanel">
@@ -181,16 +170,12 @@
 
 <section class="tab-panel card hidden" data-tab="maintenance" role="tabpanel">
   <h2 class="card-title" data-i18n="settingsTabMaintenance">Maintenance</h2>
-  <p class="field-help" data-i18n="maintenanceHelp">These actions apply to the working graph shown in the editor. Saved maps are never modified.</p>
+  <p class="field-help" data-i18n="maintenanceHelp">These actions create content for the saved maps. Existing maps are never changed.</p>
 
   <div class="maintenance-actions">
-    <form method="post" action="/admin/maintenance/clear" data-confirm="confirmClearGraph" class="inline-form">
+    <form method="post" action="/admin/maintenance/demo-map" data-confirm="confirmSeedMap" class="inline-form">
       <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
-      <button type="submit" class="danger-button" data-i18n="maintenanceClear">Clear working graph</button>
-    </form>
-    <form method="post" action="/admin/maintenance/seed" data-confirm="confirmSeedGraph" class="inline-form">
-      <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
-      <button type="submit" class="secondary-button" data-i18n="maintenanceSeed">Restore example data</button>
+      <button type="submit" class="secondary-button" data-i18n="maintenanceSeedMap">Restore example map</button>
     </form>
   </div>
 

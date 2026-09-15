@@ -1,3 +1,7 @@
+-- Legacy staging tables. The first boot stages the example relations here (and
+-- an upgrade from v1.x keeps the previous working graph here) so that
+-- ensureInitialMap() can publish them as the first saved map. The application
+-- no longer reads or writes these tables after that bootstrap.
 CREATE TABLE IF NOT EXISTS nodes (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   label VARCHAR(255) NOT NULL,
@@ -27,9 +31,10 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Saved (published) maps. A map is an immutable snapshot of the scratch graph
--- that only administrators can create, replace or delete, and that anybody can
--- read through its short URL (/{map_path_prefix}/{short_id}).
+-- Saved (published) maps. A map owns its nodes and edges (`map_nodes` /
+-- `map_edges`) and is the editable unit of the application: administrators edit
+-- its relations and metadata, anybody can read a public map through its short
+-- URL (/{map_path_prefix}/{short_id}).
 CREATE TABLE IF NOT EXISTS maps (
   id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   short_id VARCHAR(32) NOT NULL,

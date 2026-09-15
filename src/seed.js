@@ -3,8 +3,9 @@
 /**
  * Seed data and reusable node/edge upsert helpers.
  *
- * The insert helpers are shared by both the seed process (src/db.js) and the
- * POST /api/parse endpoint (server.js).
+ * The example relations are staged in the `nodes` / `edges` tables on the first
+ * boot (see src/db.js) and immediately published as the first saved map by
+ * ensureInitialMap() in server.js.
  */
 
 const { parseText } = require('./parser');
@@ -18,6 +19,38 @@ const EXAMPLE_TEXT = `[Flávio Bolsonaro] -> [Fabrício Queiroz] : Rachadinha (D
 [Ana (Testemunha)] -> [Jornalista Investigativo] : Forneceu provas em segredo | Fontes: 
 [Jornalista Investigativo] -> [Importadora Global] : Publicou dossiê sobre | Fontes: https://jornal.com/dossie-global
 [Importadora Global] -> [Sr. Silva (Contador)] : Fachada gerenciada por | Fontes: `;
+
+/**
+ * Localized title and description used when the example relations are
+ * published as a saved map (first boot or "restore example map").
+ */
+const EXAMPLE_MAP_TITLES = {
+  pt_BR: 'Mapa de exemplo',
+  en_US: 'Example map',
+  es_MX: 'Mapa de ejemplo',
+};
+
+const EXAMPLE_MAP_DESCRIPTIONS = {
+  pt_BR: 'Mapa de demonstração criado a partir dos dados de exemplo.',
+  en_US: 'Demo map created from the built-in example data.',
+  es_MX: 'Mapa de demostración creado a partir de los datos de ejemplo.',
+};
+
+/**
+ * @param {string} [locale]
+ * @returns {string} the localized title for the example map.
+ */
+function exampleMapTitle(locale) {
+  return EXAMPLE_MAP_TITLES[String(locale || '')] || EXAMPLE_MAP_TITLES.pt_BR;
+}
+
+/**
+ * @param {string} [locale]
+ * @returns {string} the localized description for the example map.
+ */
+function exampleMapDescription(locale) {
+  return EXAMPLE_MAP_DESCRIPTIONS[String(locale || '')] || EXAMPLE_MAP_DESCRIPTIONS.pt_BR;
+}
 
 /**
  * Insert a node by label (upsert) and return its id.
@@ -99,7 +132,11 @@ async function seedDatabase(pool) {
 }
 
 module.exports = {
+  EXAMPLE_MAP_DESCRIPTIONS,
+  EXAMPLE_MAP_TITLES,
   EXAMPLE_TEXT,
+  exampleMapDescription,
+  exampleMapTitle,
   seedDatabase,
   insertRelations,
   upsertNode,

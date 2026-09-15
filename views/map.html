@@ -1,13 +1,47 @@
-<main class="app-main app-main-viewer">
+{{#if UPDATED_OK}}
+  <div class="page-banner banner banner-success" data-i18n="mapUpdatedNotice">Map updated.</div>
+{{/if}}
+
+<main class="app-main{{#if CAN_EDIT_MAP}} app-main-editor{{/if}}">
+  {{#if CAN_EDIT_MAP}}
+    <aside class="input-panel">
+      <h2 class="side-heading" data-i18n="mapDetailsHeading">Map details</h2>
+      <form method="post" action="{{DETAILS_ACTION}}" class="stacked-form">
+        <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
+        <input type="hidden" name="return_to" value="{{RETURN_TO}}">
+        <label class="field-label" for="map-title-input" data-i18n="mapTitleLabel">Title</label>
+        <input id="map-title-input" type="text" name="title" value="{{MAP_TITLE}}" maxlength="255" required>
+        <label class="field-label" for="map-description-input" data-i18n="mapDescriptionLabel">Description</label>
+        <textarea id="map-description-input" name="description" rows="3" maxlength="2000">{{MAP_DESCRIPTION}}</textarea>
+        <label class="checkbox-row">
+          <input type="hidden" name="is_public" value="0">
+          <input type="checkbox" name="is_public" value="1" {{CHECKED_PUBLIC}}>
+          <span data-i18n="mapPublicLabel">Publicly readable</span>
+        </label>
+        <div class="button-row">
+          <button type="submit" data-i18n="mapUpdateButton">Salvar detalhes</button>
+          <button id="copy-map-url" type="button" class="secondary-button" data-map-url="{{MAP_ABSOLUTE_URL}}" data-i18n="copyLinkButton">Copy link</button>
+        </div>
+      </form>
+
+      <h2 class="side-heading" data-i18n="mapRelationsHeading">Add relations</h2>
+      <label class="field-label" for="relation-input" data-i18n="textareaLabel">Relations text</label>
+      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder" placeholder="[Name] -> [Name] : Description | Sources: url1, url2"></textarea>
+      <p class="field-help" data-i18n="mapRelationsHelp">Paste new relations and press Process to append them to this map.</p>
+      <div class="button-row">
+        <button id="parse-button" type="button" data-i18n="parseButton">Process</button>
+        <button id="clear-button" type="button" class="secondary-button" data-i18n="clearButton">Clear map</button>
+      </div>
+    </aside>
+  {{/if}}
+
   <section class="map-viewer">
     <header class="map-viewer-header">
       <h2 class="map-title">{{MAP_TITLE}}</h2>
-      {{#if MAP_DESCRIPTION}}
-        <p class="map-description">{{MAP_DESCRIPTION}}</p>
-      {{/if}}
+      <p class="map-description">{{MAP_DESCRIPTION}}</p>
       <p class="map-meta"><span data-i18n="mapMetaUpdated">Updated</span> {{MAP_UPDATED}}</p>
     </header>
-    <div id="network" data-source="/api/maps/{{MAP_SHORT_ID}}"></div>
+    <div id="network" data-source="/api/maps/{{MAP_SHORT_ID}}" data-parse-endpoint="{{PARSE_ENDPOINT}}" data-clear-endpoint="{{CLEAR_ENDPOINT}}"></div>
     <div id="network-message" class="network-message" hidden></div>
   </section>
 </main>

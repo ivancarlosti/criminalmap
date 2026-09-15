@@ -7,7 +7,8 @@
  *   - Connect to MariaDB with retries (tolerates slow docker-compose startup).
  *   - Ensure the target database exists with utf8mb4 settings.
  *   - Apply the schema from db/schema.sql (auto-migration).
- *   - Seed example data when the nodes table is empty.
+ *   - Stage the example relations in the `nodes` table when it is empty; the
+ *     first saved map is published from there by ensureInitialMap() (server.js).
  *   - Export the shared connection pool.
  */
 
@@ -88,8 +89,9 @@ async function connectWithRetry() {
 }
 
 /**
- * Ensure the database exists, apply the schema, create the pool, and seed
- * example data when the database is blank.
+ * Ensure the database exists, apply the schema, create the pool, and stage the
+ * example data when the `nodes` table is still empty. The staged relations are
+ * published as the first saved map right after the server settings are loaded.
  */
 async function initDatabase() {
   const connection = await connectWithRetry();

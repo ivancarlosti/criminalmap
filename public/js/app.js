@@ -367,21 +367,40 @@
   }
 
 
+  /** @returns {Object} the data-* attributes of the network container. */
+  function networkDataset() {
+    return elements.network && elements.network.dataset ? elements.network.dataset : {};
+  }
+
   /** @returns {string} the endpoint providing the graph for this page. */
   function graphSource() {
-    const source = elements.network && elements.network.dataset ? elements.network.dataset.source : '';
+    return String(networkDataset().source || '').trim();
+  }
 
-    return source && source.trim() !== '' ? source.trim() : '/api/graph';
+  /** @returns {string} the endpoint that appends relations to a saved map. */
+  function parseEndpoint() {
+    return String(networkDataset().parseEndpoint || '').trim();
+  }
+
+  /** @returns {string} the endpoint that empties a saved map. */
+  function clearEndpoint() {
+    return String(networkDataset().clearEndpoint || '').trim();
   }
 
   async function loadInitialGraph() {
+    const source = graphSource();
+
+    if (source === '') {
+      return;
+    }
+
     setNetworkMessage('networkLoading');
 
     try {
-      const response = await fetch(graphSource(), { headers: { Accept: 'application/json' } });
+      const response = await fetch(source, { headers: { Accept: 'application/json' } });
 
       if (!response.ok) {
-        throw new Error(`GET ${graphSource()} failed with status ${response.status}`);
+        throw new Error(`GET ${source} failed with status ${response.status}`);
       }
 
       const payload = await response.json();
@@ -395,6 +414,11 @@
 
   async function handleParse() {
     const text = elements.textarea.value;
+    const endpoint = parseEndpoint();
+
+    if (endpoint === '') {
+      return;
+    }
 
     if (!text || text.trim() === '') {
       global.alert(I18n.translate('errorEmptyInput'));
@@ -406,7 +430,7 @@
     button.textContent = I18n.translate('parseButtonLoading');
 
     try {
-      const response = await fetch('/api/parse', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text }),
@@ -420,8 +444,9 @@
         return;
       }
 
-      const graph = await response.json();
-      renderGraph(graph);
+      const payload = await response.json();
+      renderGraph({ nodes: payload.nodes || [], edges: payload.edges || [] });
+      elements.textarea.value = '';
     } catch (err) {
       console.error('Parse request failed:', err);
       global.alert(I18n.translate('errorRequestFailed'));
@@ -433,6 +458,11 @@
 
   async function handleClear() {
     const button = elements.clearButton;
+    const endpoint = clearEndpoint();
+
+    if (endpoint === '') {
+      return;
+    }
 
     if (!global.confirm(I18n.translate('confirmClear'))) {
       return;
@@ -442,10 +472,10 @@
     button.textContent = I18n.translate('clearingButton');
 
     try {
-      const response = await fetch('/api/graph', { method: 'DELETE' });
+      const response = await fetch(endpoint, { method: 'DELETE' });
 
       if (!response.ok) {
-        throw new Error(`DELETE /api/graph failed with status ${response.status}`);
+        throw new Error(`DELETE ${endpoint} failed with status ${response.status}`);
       }
 
       renderGraph({ nodes: [], edges: [] });
