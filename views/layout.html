@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="{{LANG}}">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{TITLE}}</title>
+  <meta name="description" content="{{DESCRIPTION}}">
+  {{{ROBOTS_META}}}
+  <link rel="canonical" href="{{CANONICAL}}">
+
+  <meta property="og:locale" content="{{LANG}}">
+  <meta property="og:type" content="{{OG_TYPE}}">
+  <meta property="og:site_name" content="{{SITE_TITLE}}">
+  <meta property="og:title" content="{{TITLE}}">
+  <meta property="og:description" content="{{DESCRIPTION}}">
+  <meta property="og:url" content="{{CANONICAL}}">
+  {{{OG_IMAGE_META}}}
+  <meta name="twitter:card" content="{{TWITTER_CARD}}">
+  <meta name="twitter:title" content="{{TITLE}}">
+  <meta name="twitter:description" content="{{DESCRIPTION}}">
+  {{{TWITTER_SITE_META}}}
+  {{{TWITTER_IMAGE_META}}}
+
+  <meta name="theme-color" id="theme-color-meta" content="{{THEME_COLOR}}">
+  {{{FAVICON_LINKS}}}
+
+  <link rel="stylesheet" href="/css/style.css">
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js" defer></script>
+  <script src="/js/i18n.js" defer></script>
+  <script src="/js/theme.js" defer></script>
+  {{{PAGE_SCRIPTS}}}
+
+  <script>
+    window.APP_CONFIG = {{{APP_CONFIG_JSON}}};
+    (function () {
+      var stored = null;
+      try { stored = window.localStorage.getItem('theme'); } catch (error) { stored = null; }
+      var theme = (stored === 'light' || stored === 'dark') ? stored : (window.APP_CONFIG.defaultTheme || 'dark');
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
+
+  {{{CUSTOM_HEAD}}}
+  {{{CUSTOM_CSS}}}
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-text">
+      <h1 id="page-title" class="brand">
+        {{#if SITE_LOGO_URL}}<img class="brand-logo" src="{{SITE_LOGO_URL}}" alt="{{SITE_TITLE}}">{{/if}}
+        {{#if SHOW_BRAND_TEXT}}{{SITE_TITLE}}{{/if}}
+      </h1>
+      <p id="page-subtitle">{{SITE_SUBTITLE}}</p>
+    </div>
+    <nav class="header-nav">
+      {{#if SHOW_EDITOR_LINK}}
+        <a class="nav-link" href="/" data-i18n="navEditor">Editor</a>
+      {{/if}}
+      {{#if IS_ADMIN}}
+        <a class="nav-link nav-link-accent" href="/admin/settings" data-i18n="navSettings">Settings</a>
+        <a class="nav-link nav-link-accent" href="/admin/maps" data-i18n="navMaps">Maps</a>
+      {{/if}}
+      <button type="button" id="theme-toggle" class="icon-button" title="{{THEME_TOGGLE_TITLE}}">
+        <svg id="theme-icon-sun" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon hidden">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
+        </svg>
+        <svg id="theme-icon-moon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
+        </svg>
+      </button>
+      <div class="lang-control">
+        <label class="field-label" for="lang-select" data-i18n="langLabel">Idioma</label>
+        <select id="lang-select">
+          {{#each SUPPORTED_LOCALES}}
+            <option value="{{code}}" {{selected}}>{{label}}</option>
+          {{/each}}
+        </select>
+      </div>
+      {{#if IS_ADMIN}}
+        <form method="post" action="/auth/logout" class="inline-form">
+          <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
+          <button type="submit" class="nav-link nav-link-button" data-i18n="logoutButton">Logout</button>
+        </form>
+      {{/if}}
+      {{#if SHOW_LOGIN_LINK}}
+        <a class="nav-link" href="/auth/login" data-i18n="loginLink">Login</a>
+      {{/if}}
+    </nav>
+  </header>
+
+  {{{CONTENT}}}
+
+  {{{CUSTOM_JS}}}
+</body>
+</html>

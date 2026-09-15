@@ -28,6 +28,7 @@ COPY server.js ./
 COPY src/ ./src/
 COPY db/ ./db/
 COPY public/ ./public/
+COPY views/ ./views/
 
 # Run as the unprivileged "node" user provided by the base image.
 USER node

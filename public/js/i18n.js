@@ -1,13 +1,20 @@
-/* global window, document, fetch */
+/* global window, document, fetch, CustomEvent */
 (function (global) {
   'use strict';
 
-  const DEFAULT_LOCALE = 'pt-BR';
+  const config = global.APP_CONFIG || {};
+  const STORAGE_KEY = 'locale';
+  const SUPPORTED = Array.isArray(config.supportedLocales) && config.supportedLocales.length > 0
+    ? config.supportedLocales
+    : ['pt_BR'];
+  const DEFAULT_LOCALE = SUPPORTED.indexOf(config.defaultLocale) >= 0 ? config.defaultLocale : SUPPORTED[0];
+
   const dictionaryCache = new Map();
   const localeListeners = [];
 
   let currentLocale = DEFAULT_LOCALE;
   let dictionary = {};
+  let initPromise = null;
 
   /**
    * Translate a dictionary key, optionally interpolating {placeholder} vars.
@@ -35,8 +42,23 @@
   }
 
   /**
-   * Apply translations to every element carrying a data-i18n key or a
-   * data-i18n-placeholder key, then sync the <html lang> attribute.
+   * Persist the choice so the server renders the same locale next time.
+   *
+   * @param {string} locale
+   */
+  function remember(locale) {
+    try {
+      global.localStorage.setItem(STORAGE_KEY, locale);
+    } catch (error) {
+      // Storage may be unavailable; the cookie below still applies.
+    }
+
+    document.cookie = `${STORAGE_KEY}=${encodeURIComponent(locale)};path=/;max-age=31536000;SameSite=Lax`;
+  }
+
+  /**
+   * Apply translations to every element carrying a data-i18n* attribute, then
+   * sync the <html lang> attribute.
    */
   function applyTranslations() {
     document.querySelectorAll('[data-i18n]').forEach((el) => {
@@ -53,7 +75,15 @@
       }
     });
 
-    document.documentElement.lang = currentLocale;
+    document.querySelectorAll('[data-i18n-title]').forEach((el) => {
+      const key = el.getAttribute('data-i18n-title');
+      if (key) {
+        el.setAttribute('title', translate(key));
+      }
+    });
+
+    document.documentElement.lang = currentLocale.replace('_', '-');
+    document.dispatchEvent(new CustomEvent('i18n:changed', { detail: { locale: currentLocale } }));
   }
 
   /**
@@ -67,7 +97,7 @@
       return dictionaryCache.get(locale);
     }
 
-    const response = await fetch(`locales/${locale}.json`);
+    const response = await fetch(`/locales/${locale}.json`);
 
     if (!response.ok) {
       throw new Error(`Failed to load locale "${locale}" (HTTP ${response.status})`);
@@ -85,26 +115,36 @@
    * @returns {Promise<Object>}
    */
   async function setLocale(locale) {
+    const target = SUPPORTED.indexOf(locale) >= 0 ? locale : DEFAULT_LOCALE;
+
     try {
-      dictionary = await loadDictionary(locale);
-      currentLocale = locale;
+      dictionary = await loadDictionary(target);
+      currentLocale = target;
+      remember(target);
+
+      const select = document.getElementById('lang-select');
+      if (select && select.value !== target) {
+        select.value = target;
+      }
+
       applyTranslations();
 
       localeListeners.forEach((listener) => {
         try {
-          listener(locale);
+          listener(target);
         } catch (err) {
           console.error('i18n: locale change listener failed.', err);
         }
       });
     } catch (err) {
       // Keep the previous dictionary so the UI never becomes blank.
-      console.error(`i18n: could not switch to locale "${locale}".`, err);
+      console.error(`i18n: could not switch to locale "${target}".`, err);
     }
 
     return dictionary;
   }
 
+  /** @returns {string} the active locale code. */
   function getLocale() {
     return currentLocale;
   }
@@ -120,17 +160,64 @@
     }
   }
 
-  async function init() {
-    await setLocale(DEFAULT_LOCALE);
+  /**
+   * The locale to start with: stored preference > server rendered locale.
+   *
+   * @returns {string}
+   */
+  function preferredLocale() {
+    let stored = null;
+
+    try {
+      stored = global.localStorage.getItem(STORAGE_KEY);
+    } catch (error) {
+      stored = null;
+    }
+
+    if (stored && SUPPORTED.indexOf(stored) >= 0) {
+      return stored;
+    }
+
+    return SUPPORTED.indexOf(config.currentLocale) >= 0 ? config.currentLocale : DEFAULT_LOCALE;
+  }
+
+  async function initialize() {
+    const select = document.getElementById('lang-select');
+
+    if (select) {
+      select.value = preferredLocale();
+      select.addEventListener('change', () => {
+        setLocale(select.value);
+      });
+    }
+
+    await setLocale(preferredLocale());
     return dictionary;
   }
 
+  /** @returns {Promise<Object>} resolves once the first dictionary is applied. */
+  function ready() {
+    if (!initPromise) {
+      initPromise = initialize();
+    }
+
+    return initPromise;
+  }
+
   global.I18n = {
-    translate,
     applyTranslations,
-    setLocale,
     getLocale,
+    init: ready,
     onLocaleChange,
-    init,
+    ready,
+    setLocale,
+    supportedLocales: SUPPORTED,
+    translate,
   };
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', ready);
+  } else {
+    ready();
+  }
 })(window);

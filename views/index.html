@@ -1,0 +1,67 @@
+<main class="app-main">
+  <aside class="input-panel">
+    {{#if SAVED_MAP_URL}}
+      <div class="banner banner-success">
+        <p><span data-i18n="savedMapNotice">Map saved:</span>
+          <a href="{{SAVED_MAP_URL}}" id="saved-map-url">{{SAVED_MAP_URL}}</a></p>
+        <button type="button" id="copy-map-url" class="secondary-button" data-map-url="{{SAVED_MAP_URL}}" data-i18n="copyLinkButton">Copy link</button>
+      </div>
+    {{/if}}
+
+    {{#if EDITOR_PANEL}}
+      <label class="field-label" for="relation-input" data-i18n="textareaLabel">Texto das relações</label>
+      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder">[Flávio Bolsonaro] -> [Fabrício Queiroz] : Rachadinha (Desvio de salários) | Fontes: https://noticia1.com/rachadinha, https://noticia2.com/relatorio-coaf
+[Flávio Bolsonaro] -> [Fabrício Queiroz] : Lavagem de Dinheiro (Loja de Chocolates) | Fontes: https://noticia3.com/chocolates
+[Fabrício Queiroz] -> [Milícia de Rio das Pedras] : Ligação com milicianos | Fontes: https://noticia4.com/milicia
+[Victor (O Chefe)] -> [Marcos (O Capanga)] : Emprega e dá ordens para | Fontes: https://inquerito.gov/pag12
+[Victor (O Chefe)] -> [Sr. Silva (Contador)] : Usa para lavar dinheiro | Fontes: 
+[Inspetor Carlos] -> [Victor (O Chefe)] : Recebe propina de | Fontes: https://audio-vazado.com/carlos
+[Ana (Testemunha)] -> [Jornalista Investigativo] : Forneceu provas em segredo | Fontes: 
+[Jornalista Investigativo] -> [Importadora Global] : Publicou dossiê sobre | Fontes: https://jornal.com/dossie-global
+[Importadora Global] -> [Sr. Silva (Contador)] : Fachada gerenciada por | Fontes: </textarea>
+      <div class="button-row">
+        <button id="parse-button" type="button" data-i18n="parseButton">Processar</button>
+        <button id="clear-button" type="button" class="secondary-button" data-i18n="clearButton">Limpar</button>
+      </div>
+    {{/if}}
+
+    {{#if READ_ONLY_NOTICE}}
+      <p class="panel-note" data-i18n="readOnlyNotice">This map is read-only. Sign in as administrator to edit it.</p>
+    {{/if}}
+
+    {{#if IS_ADMIN}}
+      <details class="save-map-panel" open>
+        <summary data-i18n="saveAsMapHeading">Save current graph as map</summary>
+        <form method="post" action="/admin/maps" class="save-map-form">
+          <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
+          <input type="hidden" name="return_to" value="/">
+          <label class="field-label" for="map-title" data-i18n="mapTitleLabel">Title</label>
+          <input id="map-title" type="text" name="title" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
+          <label class="field-label" for="map-description" data-i18n="mapDescriptionLabel">Description</label>
+          <textarea id="map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary"></textarea>
+          <label class="checkbox-row">
+            <input type="hidden" name="is_public" value="0">
+            <input type="checkbox" name="is_public" value="1" checked>
+            <span data-i18n="mapPublicLabel">Publicly readable</span>
+          </label>
+          <button type="submit" data-i18n="saveMapButton">Save map</button>
+        </form>
+      </details>
+    {{/if}}
+  </aside>
+
+  <section class="network-panel">
+    <div id="network" data-source="/api/graph"></div>
+    <div id="network-message" class="network-message" hidden></div>
+  </section>
+</main>
+
+<div id="edge-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <header class="modal-header">
+      <h2 id="modal-title">Conexão</h2>
+      <button id="modal-close" class="modal-close" type="button" data-i18n="modalClose">Fechar</button>
+    </header>
+    <div id="modal-body" class="modal-body"></div>
+  </div>
+</div>

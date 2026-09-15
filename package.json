@@ -4,7 +4,8 @@
   "description": "Backend API for the Crime Board / Investigation Network Graph system.",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "hash-password": "node src/cli/hash-password.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",

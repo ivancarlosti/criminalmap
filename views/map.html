@@ -1,0 +1,23 @@
+<main class="app-main app-main-viewer">
+  <section class="map-viewer">
+    <header class="map-viewer-header">
+      <h2 class="map-title">{{MAP_TITLE}}</h2>
+      {{#if MAP_DESCRIPTION}}
+        <p class="map-description">{{MAP_DESCRIPTION}}</p>
+      {{/if}}
+      <p class="map-meta"><span data-i18n="mapMetaUpdated">Updated</span> {{MAP_UPDATED}}</p>
+    </header>
+    <div id="network" data-source="/api/maps/{{MAP_SHORT_ID}}"></div>
+    <div id="network-message" class="network-message" hidden></div>
+  </section>
+</main>
+
+<div id="edge-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <header class="modal-header">
+      <h2 id="modal-title">Conexão</h2>
+      <button id="modal-close" class="modal-close" type="button" data-i18n="modalClose">Fechar</button>
+    </header>
+    <div id="modal-body" class="modal-body"></div>
+  </div>
+</div>

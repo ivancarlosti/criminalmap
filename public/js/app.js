@@ -1,5 +1,5 @@
-/* global vis, I18n */
-(function () {
+/* global vis, I18n, Theme */
+(function (global) {
   'use strict';
 
   // Post-it color palette (background + border pairs) used for nodes.
@@ -16,24 +16,61 @@
     { background: '#80CBC4', border: '#468A83' },
   ];
 
+  // Edge and label colors per theme.
+  const THEME_STYLES = {
+    dark: {
+      edgeColor: '#e6b84c',
+      edgeHighlight: '#ffe082',
+      edgeHover: '#fff59d',
+      edgeLabel: '#d8c9a3',
+      edgeLabelStroke: '#0d0d0d',
+      nodeLabel: '#211d19',
+    },
+    light: {
+      edgeColor: '#a8761f',
+      edgeHighlight: '#c9933d',
+      edgeHover: '#b8862a',
+      edgeLabel: '#4a3f2a',
+      edgeLabelStroke: '#f7f2e7',
+      nodeLabel: '#2b2419',
+    },
+  };
+
   const state = {
     network: null,
     graph: { nodes: [], edges: [] },
     modalType: null, // 'edge' | 'node' | null
     modalData: null,
-    networkMessage: null, // 'networkLoading' | 'networkError' | null
+    networkMessage: null, // i18n key of the message currently shown
   };
 
   const elements = {
     network: document.getElementById('network'),
+    networkMessage: document.getElementById('network-message'),
     textarea: document.getElementById('relation-input'),
     parseButton: document.getElementById('parse-button'),
+    clearButton: document.getElementById('clear-button'),
     langSelect: document.getElementById('lang-select'),
     modal: document.getElementById('edge-modal'),
     modalTitle: document.getElementById('modal-title'),
     modalBody: document.getElementById('modal-body'),
     modalClose: document.getElementById('modal-close'),
+    copyMapUrl: document.getElementById('copy-map-url'),
   };
+
+  /** @returns {string} the active theme name. */
+  function currentTheme() {
+    if (global.Theme && typeof global.Theme.current === 'function') {
+      return global.Theme.current();
+    }
+
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  /** @returns {Object} the color set for the active theme. */
+  function themeStyle() {
+    return THEME_STYLES[currentTheme()] || THEME_STYLES.dark;
+  }
 
   // Simple deterministic 32-bit string hash (djb2 variant).
   function hashString(value) {
@@ -51,6 +88,8 @@
   }
 
   function buildNodeDataSet(nodes) {
+    const style = themeStyle();
+
     return new vis.DataSet(nodes.map((node) => {
       const palette = colorForLabel(node.label);
       const type = node.type || 'person';
@@ -67,7 +106,7 @@
           highlight: { background: palette.background, border: '#ffffff' },
           hover: { background: palette.background, border: '#ffffff' },
         },
-        font: { color: '#211d19', face: 'monospace', size: 14 },
+        font: { color: style.nodeLabel, face: 'monospace', size: 14 },
         borderWidth: 2,
         borderWidthSelected: 3,
         shadow: { enabled: true, color: 'rgba(0, 0, 0, 0.45)', size: 8, x: 2, y: 3 },
@@ -78,6 +117,7 @@
 
   function buildEdgeDataSet(edges, nodes) {
     const labelById = new Map(nodes.map((node) => [node.id, node.label]));
+    const style = themeStyle();
 
     return new vis.DataSet(edges.map((edge) => {
       const fromLabel = labelById.get(edge.from) || String(edge.from);
@@ -91,20 +131,20 @@
         arrows: { to: { enabled: true, scaleFactor: 0.7 } },
         smooth: { enabled: true, type: 'continuous', roundness: 0.35 },
         color: {
-          color: '#e6b84c',
-          highlight: '#ffe082',
-          hover: '#fff59d',
+          color: style.edgeColor,
+          highlight: style.edgeHighlight,
+          hover: style.edgeHover,
           opacity: 0.9,
         },
         width: 2,
         selectionWidth: 3,
         font: {
-          color: '#d8c9a3',
+          color: style.edgeLabel,
           face: 'monospace',
           size: 11,
           align: 'top',
           strokeWidth: 2,
-          strokeColor: '#0d0d0d',
+          strokeColor: style.edgeLabelStroke,
         },
       };
     }));
@@ -140,10 +180,45 @@
     };
   }
 
+  /**
+   * Show an i18n message on top of the network canvas.
+   *
+   * @param {string} key
+   */
+  function setNetworkMessage(key) {
+    state.networkMessage = key;
+
+    if (elements.networkMessage) {
+      elements.networkMessage.textContent = I18n.translate(key);
+      elements.networkMessage.hidden = false;
+    }
+  }
+
+  function clearNetworkMessage() {
+    state.networkMessage = null;
+
+    if (elements.networkMessage) {
+      elements.networkMessage.textContent = '';
+      elements.networkMessage.hidden = true;
+    }
+  }
+
+  /**
+   * Render a graph payload (working graph or saved map).
+   *
+   * @param {{nodes: Array, edges: Array}} graph
+   */
   function renderGraph(graph) {
     state.graph = graph || { nodes: [], edges: [] };
+
     const nodes = buildNodeDataSet(state.graph.nodes);
     const edges = buildEdgeDataSet(state.graph.edges, state.graph.nodes);
+
+    if (state.graph.nodes.length === 0) {
+      setNetworkMessage('networkEmpty');
+    } else {
+      clearNetworkMessage();
+    }
 
     if (state.network) {
       state.network.setData({ nodes, edges });
@@ -151,15 +226,8 @@
       return;
     }
 
-    state.networkMessage = null;
-    elements.network.textContent = '';
     state.network = new vis.Network(elements.network, { nodes, edges }, buildOptions());
     state.network.on('click', handleNetworkClick);
-  }
-
-  function setNetworkMessage(key) {
-    state.networkMessage = key;
-    elements.network.textContent = I18n.translate(key);
   }
 
   function labelMap() {
@@ -182,6 +250,7 @@
       }
     }
   }
+
 
   function openEdgeModal(edge) {
     state.modalType = 'edge';
@@ -297,18 +366,29 @@
     state.modalData = null;
   }
 
+
+  /** @returns {string} the endpoint providing the graph for this page. */
+  function graphSource() {
+    const source = elements.network && elements.network.dataset ? elements.network.dataset.source : '';
+
+    return source && source.trim() !== '' ? source.trim() : '/api/graph';
+  }
+
   async function loadInitialGraph() {
     setNetworkMessage('networkLoading');
 
     try {
-      const response = await fetch('/api/graph');
+      const response = await fetch(graphSource(), { headers: { Accept: 'application/json' } });
+
       if (!response.ok) {
-        throw new Error(`GET /api/graph failed with status ${response.status}`);
+        throw new Error(`GET ${graphSource()} failed with status ${response.status}`);
       }
-      const graph = await response.json();
-      renderGraph(graph);
+
+      const payload = await response.json();
+
+      renderGraph({ nodes: payload.nodes || [], edges: payload.edges || [] });
     } catch (err) {
-      console.error('Failed to load initial graph:', err);
+      console.error('Failed to load the graph:', err);
       setNetworkMessage('networkError');
     }
   }
@@ -317,7 +397,7 @@
     const text = elements.textarea.value;
 
     if (!text || text.trim() === '') {
-      window.alert(I18n.translate('errorEmptyInput'));
+      global.alert(I18n.translate('errorEmptyInput'));
       return;
     }
 
@@ -336,7 +416,7 @@
         const message = response.status === 400
           ? I18n.translate('errorNoValidLines')
           : I18n.translate('errorRequestFailed');
-        window.alert(message);
+        global.alert(message);
         return;
       }
 
@@ -344,15 +424,82 @@
       renderGraph(graph);
     } catch (err) {
       console.error('Parse request failed:', err);
-      window.alert(I18n.translate('errorRequestFailed'));
+      global.alert(I18n.translate('errorRequestFailed'));
     } finally {
       button.disabled = false;
       button.textContent = I18n.translate('parseButton');
     }
   }
 
+  async function handleClear() {
+    const button = elements.clearButton;
+
+    if (!global.confirm(I18n.translate('confirmClear'))) {
+      return;
+    }
+
+    button.disabled = true;
+    button.textContent = I18n.translate('clearingButton');
+
+    try {
+      const response = await fetch('/api/graph', { method: 'DELETE' });
+
+      if (!response.ok) {
+        throw new Error(`DELETE /api/graph failed with status ${response.status}`);
+      }
+
+      renderGraph({ nodes: [], edges: [] });
+    } catch (err) {
+      console.error('Clear request failed:', err);
+      global.alert(I18n.translate('errorClearFailed'));
+    } finally {
+      button.disabled = false;
+      button.textContent = I18n.translate('clearButton');
+    }
+  }
+
+  async function handleCopyMapUrl() {
+    const button = elements.copyMapUrl;
+    const url = button.dataset.mapUrl || '';
+
+    if (url === '') {
+      return;
+    }
+
+    try {
+      if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+        await global.navigator.clipboard.writeText(url);
+      } else {
+        const helper = document.createElement('input');
+        helper.value = url;
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand('copy');
+        helper.remove();
+      }
+
+      button.textContent = I18n.translate('copyLinkDone');
+      global.setTimeout(() => {
+        button.textContent = I18n.translate('copyLinkButton');
+      }, 2000);
+    } catch (err) {
+      console.error('Could not copy the map URL:', err);
+    }
+  }
+
   function bindEvents() {
-    elements.parseButton.addEventListener('click', handleParse);
+    if (elements.parseButton && elements.textarea) {
+      elements.parseButton.addEventListener('click', handleParse);
+    }
+
+    if (elements.clearButton) {
+      elements.clearButton.addEventListener('click', handleClear);
+    }
+
+    if (elements.copyMapUrl) {
+      elements.copyMapUrl.addEventListener('click', handleCopyMapUrl);
+    }
+
     elements.modalClose.addEventListener('click', closeModal);
 
     // Clicking the dimmed overlay (but not the card) closes the modal.
@@ -368,30 +515,37 @@
       }
     });
 
-    elements.langSelect.addEventListener('change', () => {
-      I18n.setLocale(elements.langSelect.value);
+    // Rebuild the graph with the palette of the newly selected theme.
+    document.addEventListener('themechange', () => {
+      if (state.network) {
+        renderGraph(state.graph);
+      }
     });
 
     // After a locale switch, refresh the modal (if open) and any fallback text.
     I18n.onLocaleChange(() => {
-      elements.langSelect.value = I18n.getLocale();
       if (state.modalType) {
         renderModal();
       }
-      if (!state.network && state.networkMessage) {
-        elements.network.textContent = I18n.translate(state.networkMessage);
+
+      if (state.networkMessage) {
+        setNetworkMessage(state.networkMessage);
       }
     });
   }
 
   async function init() {
+    if (!elements.network) {
+      return;
+    }
+
     bindEvents();
-    await I18n.init();
-    elements.langSelect.value = I18n.getLocale();
+    await I18n.ready();
     await loadInitialGraph();
   }
 
   init().catch((err) => {
     console.error('Frontend initialization failed:', err);
   });
-})();
+})(window);
+

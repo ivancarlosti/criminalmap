@@ -1,0 +1,95 @@
+<main class="page">
+{{#if SAVED_OK}}
+  <div class="banner banner-success" data-i18n="mapsSaved">Map saved.</div>
+{{/if}}
+
+{{#if DELETED_OK}}
+  <div class="banner banner-success" data-i18n="mapsDeleted">Map deleted.</div>
+{{/if}}
+
+{{#if UPDATED_OK}}
+  <div class="banner banner-success" data-i18n="mapsUpdated">Map updated.</div>
+{{/if}}
+
+{{#if LOADED_OK}}
+  <div class="banner banner-success" data-i18n="mapsLoaded">Map loaded into the editor.</div>
+{{/if}}
+
+{{#if VALIDATION_ERROR}}
+  <div class="banner banner-error" data-i18n="{{VALIDATION_ERROR}}"></div>
+{{/if}}
+
+<section class="card">
+  <h2 class="card-title" data-i18n="mapsNewHeading">Save the working graph as a map</h2>
+  <p class="field-help" data-i18n="mapsNewHelp">A snapshot of the current editor graph is stored under a short public URL. Only administrators can create or replace it.</p>
+
+  <form method="post" action="/admin/maps" class="stacked-form">
+    <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
+    <input type="hidden" name="return_to" value="/admin/maps">
+
+    <label class="field-label" for="new-map-title" data-i18n="mapTitleLabel">Title</label>
+    <input id="new-map-title" type="text" name="title" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
+
+    <label class="field-label" for="new-map-description" data-i18n="mapDescriptionLabel">Description</label>
+    <textarea id="new-map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary"></textarea>
+
+    <label class="checkbox-row">
+      <input type="hidden" name="is_public" value="0">
+      <input type="checkbox" name="is_public" value="1" checked>
+      <span data-i18n="mapPublicLabel">Publicly readable</span>
+    </label>
+
+    <button type="submit" data-i18n="saveMapButton">Save map</button>
+  </form>
+</section>
+
+<section class="card">
+  <h2 class="card-title" data-i18n="mapsHeading">Saved maps</h2>
+
+  {{#if MAPS_EMPTY}}
+    <p class="field-help" data-i18n="mapsEmpty">No saved maps yet.</p>
+  {{/if}}
+
+  {{#each MAPS}}
+    <article class="map-row">
+      <header class="map-row-header">
+        <h3 class="map-row-title">{{title}}</h3>
+        <span class="map-row-link">{{short_id}}</span>
+        {{#if is_public}}<span class="map-row-badge" data-i18n="mapPublic">Public</span>{{/if}}
+        {{#if is_private}}<span class="map-row-badge" data-i18n="mapPrivate">Private</span>{{/if}}
+        <span class="map-row-counts">{{node_count}} / {{edge_count}}</span>
+      </header>
+
+      <form method="post" action="/admin/maps/{{id}}/update" class="map-row-form">
+        <input type="hidden" name="_csrf" value="{{csrf}}">
+        <input type="hidden" name="return_to" value="/admin/maps">
+        <label class="field-label" for="map-title-{{id}}" data-i18n="mapTitleLabel">Title</label>
+        <input id="map-title-{{id}}" type="text" name="title" value="{{title}}" maxlength="255" required>
+        <label class="field-label" for="map-description-{{id}}" data-i18n="mapDescriptionLabel">Description</label>
+        <textarea id="map-description-{{id}}" name="description" rows="2" maxlength="2000">{{description}}</textarea>
+        <label class="checkbox-row">
+          <input type="hidden" name="is_public" value="0">
+          <input type="checkbox" name="is_public" value="1" {{#if is_public}}checked{{/if}}>
+          <span data-i18n="mapPublicLabel">Publicly readable</span>
+        </label>
+        <div class="button-row">
+          <button type="submit" data-i18n="mapUpdateButton">Save details</button>
+          <button type="submit" formaction="/admin/maps/{{id}}/replace" class="secondary-button" data-i18n="mapReplaceButton">Replace with working graph</button>
+        </div>
+      </form>
+
+      <div class="button-row">
+        <a class="button-link" href="{{url}}" data-i18n="mapViewButton">View map</a>
+        <form method="post" action="/admin/maps/{{id}}/load" class="inline-form" data-confirm="mapsLoadConfirm">
+          <input type="hidden" name="_csrf" value="{{csrf}}">
+          <button type="submit" class="secondary-button" data-i18n="mapLoadButton">Load into editor</button>
+        </form>
+        <form method="post" action="/admin/maps/{{id}}/delete" class="inline-form" data-confirm="mapsDeleteConfirm">
+          <input type="hidden" name="_csrf" value="{{csrf}}">
+          <button type="submit" class="danger-button" data-i18n="mapDeleteButton">Delete</button>
+        </form>
+      </div>
+    </article>
+  {{/each}}
+</section>
+</main>
