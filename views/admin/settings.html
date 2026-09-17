@@ -33,21 +33,21 @@
       <fieldset class="fieldset">
         <legend>{{label}}</legend>
         <label class="field-label" for="site-title-{{code}}" data-i18n="settingsSiteTitle">Site title</label>
-        <input id="site-title-{{code}}" type="text" name="site_title_{{code}}" value="{{title_value}}" maxlength="255">
+        <input class="field-input" id="site-title-{{code}}" type="text" name="site_title_{{code}}" value="{{title_value}}" maxlength="255">
         <label class="field-label" for="site-subtitle-{{code}}" data-i18n="settingsSiteSubtitle">Site subtitle</label>
-        <input id="site-subtitle-{{code}}" type="text" name="site_subtitle_{{code}}" value="{{subtitle_value}}" maxlength="255">
+        <input class="field-input" id="site-subtitle-{{code}}" type="text" name="site_subtitle_{{code}}" value="{{subtitle_value}}" maxlength="255">
       </fieldset>
     {{/each}}
 
     <div class="field-grid">
       <div>
         <label class="field-label" for="site-logo-url" data-i18n="settingsSiteLogo">Logo URL</label>
-        <input id="site-logo-url" type="text" name="site_logo_url" value="{{SITE_LOGO_URL}}" maxlength="2048" placeholder="https://example.com/logo.png">
+        <input class="field-input" id="site-logo-url" type="text" name="site_logo_url" value="{{SITE_LOGO_URL}}" maxlength="2048" placeholder="https://example.com/logo.png">
         <p class="field-help" data-i18n="settingsSiteLogoHelp">Optional. Shown in the header instead of the site title.</p>
       </div>
       <div>
         <label class="field-label" for="favicon-url" data-i18n="settingsFavicon">Favicon URL</label>
-        <input id="favicon-url" type="text" name="favicon_url" value="{{FAVICON_URL}}" maxlength="2048" placeholder="https://example.com/favicon.png">
+        <input class="field-input" id="favicon-url" type="text" name="favicon_url" value="{{FAVICON_URL}}" maxlength="2048" placeholder="https://example.com/favicon.png">
         <p class="field-help" data-i18n="settingsFaviconHelp">Optional. Used as the browser tab icon.</p>
       </div>
     </div>
@@ -55,7 +55,7 @@
     <div class="field-grid">
       <div>
         <label class="field-label" for="default-locale" data-i18n="settingsDefaultLocale">Default language</label>
-        <select id="default-locale" name="default_locale">
+        <select class="field-input" id="default-locale" name="default_locale">
           {{#each LOCALES}}
             <option value="{{code}}" {{selected_default}}>{{label}}</option>
           {{/each}}
@@ -63,7 +63,7 @@
       </div>
       <div>
         <label class="field-label" for="default-theme" data-i18n="settingsDefaultTheme">Default theme</label>
-        <select id="default-theme" name="default_theme">
+        <select class="field-input" id="default-theme" name="default_theme">
           <option value="dark" {{#if DEFAULT_THEME_DARK}}selected{{/if}} data-i18n="themeDark">Dark</option>
           <option value="light" {{#if DEFAULT_THEME_LIGHT}}selected{{/if}} data-i18n="themeLight">Light</option>
         </select>
@@ -73,12 +73,12 @@
     <div class="field-grid">
       <div>
         <label class="field-label" for="theme-color-light" data-i18n="settingsThemeColorLight">Theme color (light)</label>
-        <input id="theme-color-light" type="text" name="theme_color_light" value="{{THEME_COLOR_LIGHT}}" maxlength="32" placeholder="#f5efe2">
+        <input class="field-input" id="theme-color-light" type="text" name="theme_color_light" value="{{THEME_COLOR_LIGHT}}" maxlength="32" placeholder="#f5efe2">
         <p class="field-help" data-i18n="settingsThemeColorLightHelp">Mobile browser toolbar color for the light theme.</p>
       </div>
       <div>
         <label class="field-label" for="theme-color-dark" data-i18n="settingsThemeColorDark">Theme color (dark)</label>
-        <input id="theme-color-dark" type="text" name="theme_color_dark" value="{{THEME_COLOR_DARK}}" maxlength="32" placeholder="#0e0e10">
+        <input class="field-input" id="theme-color-dark" type="text" name="theme_color_dark" value="{{THEME_COLOR_DARK}}" maxlength="32" placeholder="#0e0e10">
         <p class="field-help" data-i18n="settingsThemeColorDarkHelp">Mobile browser toolbar color for the dark theme.</p>
       </div>
     </div>
@@ -90,12 +90,12 @@
     <div class="field-grid">
       <div>
         <label class="field-label" for="map-path-prefix" data-i18n="settingsMapPathPrefix">Map URL directory</label>
-        <input id="map-path-prefix" type="text" name="map_path_prefix" value="{{MAP_PATH_PREFIX}}" maxlength="16" placeholder="m">
+        <input class="field-input" id="map-path-prefix" type="text" name="map_path_prefix" value="{{MAP_PATH_PREFIX}}" maxlength="16" placeholder="m">
         <p class="field-help" data-i18n="settingsMapPathPrefixHelp">Directory used by public map links, e.g. /m/abcxyz. Lowercase letters, digits, "-" and "_" only.</p>
       </div>
       <div>
         <label class="field-label" for="map-short-id-length" data-i18n="settingsMapShortIdLength">Short URL ID length</label>
-        <input id="map-short-id-length" type="number" name="map_short_id_length" value="{{MAP_SHORT_ID_LENGTH}}" min="3" max="32" required>
+        <input class="field-input" id="map-short-id-length" type="number" name="map_short_id_length" value="{{MAP_SHORT_ID_LENGTH}}" min="3" max="32" required>
         <p class="field-help" data-i18n="settingsMapShortIdLengthHelp">Random characters in new map links (3–32, default 6).</p>
       </div>
     </div>
@@ -123,7 +123,7 @@
     </label>
     <p class="field-help" data-i18n="settingsRobotsEnabledHelp">Published at /robots.txt using the content below.</p>
     <label class="field-label" for="robots-content" data-i18n="settingsRobotsContent">robots.txt content</label>
-    <textarea id="robots-content" name="robots_content" rows="6" maxlength="5000" spellcheck="false">{{ROBOTS_CONTENT}}</textarea>
+    <textarea class="field-input" id="robots-content" name="robots_content" rows="6" maxlength="5000" spellcheck="false">{{ROBOTS_CONTENT}}</textarea>
 
     <label class="checkbox-row">
       <input type="hidden" name="sitemap_enabled" value="0">
@@ -135,12 +135,12 @@
     <div class="field-grid">
       <div>
         <label class="field-label" for="site-url" data-i18n="settingsSiteUrl">Canonical site URL</label>
-        <input id="site-url" type="text" name="site_url" value="{{SITE_URL_RAW}}" maxlength="2048" placeholder="https://criminalmap.example.com">
+        <input class="field-input" id="site-url" type="text" name="site_url" value="{{SITE_URL_RAW}}" maxlength="2048" placeholder="https://criminalmap.example.com">
         <p class="field-help" data-i18n="settingsSiteUrlHelp">Used for canonical links, OpenGraph URLs and the sitemap. Falls back to the DOMAIN environment variable.</p>
       </div>
       <div>
         <label class="field-label" for="og-image-url" data-i18n="settingsOgImage">Default OpenGraph image URL</label>
-        <input id="og-image-url" type="text" name="og_image_url" value="{{OG_IMAGE_URL}}" maxlength="2048" placeholder="https://example.com/card.png">
+        <input class="field-input" id="og-image-url" type="text" name="og_image_url" value="{{OG_IMAGE_URL}}" maxlength="2048" placeholder="https://example.com/card.png">
         <p class="field-help" data-i18n="settingsOgImageHelp">Optional image shown when a page is shared on social networks.</p>
       </div>
     </div>
@@ -158,7 +158,7 @@
     </p>
 
     <label class="field-label" for="twitter-site" data-i18n="settingsTwitterSite">X/Twitter account</label>
-    <input id="twitter-site" type="text" name="twitter_site" value="{{TWITTER_SITE}}" maxlength="64" placeholder="@yourhandle">
+    <input class="field-input" id="twitter-site" type="text" name="twitter_site" value="{{TWITTER_SITE}}" maxlength="64" placeholder="@yourhandle">
     <p class="field-help" data-i18n="settingsTwitterSiteHelp">Optional. Rendered as the twitter:site meta tag.</p>
   </section>
 
@@ -168,15 +168,15 @@
 
     <label class="field-label" for="custom-head" data-i18n="settingsCustomHead">Head injection</label>
     <p class="field-help" data-i18n="settingsCustomHeadHelp">Raw HTML injected inside the head of every page.</p>
-    <textarea id="custom-head" name="custom_head" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_HEAD}}</textarea>
+    <textarea class="field-input" id="custom-head" name="custom_head" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_HEAD}}</textarea>
 
     <label class="field-label" for="custom-css" data-i18n="settingsCustomCss">Custom CSS</label>
     <p class="field-help" data-i18n="settingsCustomCssHelp">Inline CSS added to every page.</p>
-    <textarea id="custom-css" name="custom_css" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_CSS}}</textarea>
+    <textarea class="field-input" id="custom-css" name="custom_css" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_CSS}}</textarea>
 
     <label class="field-label" for="custom-js" data-i18n="settingsCustomJs">Custom JavaScript</label>
     <p class="field-help" data-i18n="settingsCustomJsHelp">Inline JavaScript added before the closing body tag.</p>
-    <textarea id="custom-js" name="custom_js" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_JS}}</textarea>
+    <textarea class="field-input" id="custom-js" name="custom_js" rows="8" maxlength="50000" spellcheck="false">{{CUSTOM_JS}}</textarea>
   </section>
 
   <div class="form-actions" data-tab-scope="appearance maps webstandards html">

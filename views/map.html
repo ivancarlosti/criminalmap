@@ -5,14 +5,14 @@
 <main class="app-main{{#if CAN_EDIT_MAP}} app-main-editor{{/if}}">
   {{#if CAN_EDIT_MAP}}
     <aside class="input-panel">
-      <h2 class="side-heading" data-i18n="mapDetailsHeading">Map details</h2>
+      <h2 class="card-title" data-i18n="mapDetailsHeading">Map details</h2>
       <form method="post" action="{{DETAILS_ACTION}}" class="stacked-form">
         <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
         <input type="hidden" name="return_to" value="{{RETURN_TO}}">
         <label class="field-label" for="map-title-input" data-i18n="mapTitleLabel">Title</label>
-        <input id="map-title-input" type="text" name="title" value="{{MAP_TITLE}}" maxlength="255" required>
+        <input class="field-input" id="map-title-input" type="text" name="title" value="{{MAP_TITLE}}" maxlength="255" required>
         <label class="field-label" for="map-description-input" data-i18n="mapDescriptionLabel">Description</label>
-        <textarea id="map-description-input" name="description" rows="3" maxlength="2000">{{MAP_DESCRIPTION}}</textarea>
+        <textarea class="field-input" id="map-description-input" name="description" rows="3" maxlength="2000">{{MAP_DESCRIPTION}}</textarea>
         <label class="checkbox-row">
           <input type="hidden" name="is_public" value="0">
           <input type="checkbox" name="is_public" value="1" {{CHECKED_PUBLIC}}>
@@ -24,9 +24,9 @@
         </div>
       </form>
 
-      <h2 class="side-heading" data-i18n="mapRelationsHeading">Relations</h2>
+      <h2 class="card-title" data-i18n="mapRelationsHeading">Relations</h2>
       <label class="field-label" for="relation-input" data-i18n="textareaLabel">Relations text</label>
-      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder" placeholder="[Name] -> [Name] : Description | Sources: url1, url2">{{RELATIONS_TEXT}}</textarea>
+      <textarea class="field-input" id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder" placeholder="[Name] -> [Name] : Description | Sources: url1, url2">{{RELATIONS_TEXT}}</textarea>
       <p class="field-help" data-i18n="mapRelationsHelp">These are the relations saved in this map. Edit, add or remove lines and press Process to save.</p>
       <div class="button-row">
         <button id="parse-button" type="button" data-i18n="parseButton">Process</button>
@@ -35,7 +35,7 @@
       </div>
 
       {{#if OG_CARD_URL}}
-        <h2 class="side-heading" data-i18n="ogCardPreviewHeading">Social card</h2>
+        <h2 class="card-title" data-i18n="ogCardPreviewHeading">Social card</h2>
         <img class="og-card-preview" src="{{OG_CARD_URL}}" alt="" loading="lazy">
         <p class="field-help" data-i18n="ogCardPreviewHelp">Image used when this map is shared on social networks. It is regenerated whenever the map is saved.</p>
       {{/if}}

@@ -33,9 +33,9 @@
         <input type="hidden" name="_csrf" value="{{csrf}}">
         <input type="hidden" name="return_to" value="/admin/maps">
         <label class="field-label" for="map-title-{{id}}" data-i18n="mapTitleLabel">Title</label>
-        <input id="map-title-{{id}}" type="text" name="title" value="{{title}}" maxlength="255" required>
+        <input class="field-input" id="map-title-{{id}}" type="text" name="title" value="{{title}}" maxlength="255" required>
         <label class="field-label" for="map-description-{{id}}" data-i18n="mapDescriptionLabel">Description</label>
-        <textarea id="map-description-{{id}}" name="description" rows="2" maxlength="2000">{{description}}</textarea>
+        <textarea class="field-input" id="map-description-{{id}}" name="description" rows="2" maxlength="2000">{{description}}</textarea>
         <label class="checkbox-row">
           <input type="hidden" name="is_public" value="0">
           <input type="checkbox" name="is_public" value="1" {{#if is_public}}checked{{/if}}>

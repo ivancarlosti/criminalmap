@@ -162,23 +162,16 @@ body.modal-open {
   flex-direction: column;
 }
 
-.field-label {
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  letter-spacing: 0.05em;
-  color: var(--muted);
-  text-transform: uppercase;
-}
-
 /* Inputs & controls -------------------------------------------------------- */
 
-/* The whole editor panel (title, description and relations) shares one field
-   style: without it the title/description boxes kept the browser default (white
-   background, sans-serif font) instead of following the theme. */
+/* Single field style shared by every form in the app: the login card, the
+   create-map card of the home page, the editor panel of the map page and the
+   admin pages. Those forms live in different containers (.auth-card,
+   .input-panel, .page), so a class is used instead of container scoped
+   selectors — a new field only needs class="field-input". Without it the
+   fields kept the browser default (white background, sans-serif font). */
 
-#relation-input,
-#map-title-input,
-#map-description-input {
+.field-input {
   width: 100%;
   padding: 12px 14px;
   resize: vertical;
@@ -192,16 +185,38 @@ body.modal-open {
   outline: none;
 }
 
+/* The relations textarea keeps its own size on top of the shared field style:
+   it fills the panel and is the main editing surface of the map page. */
 #relation-input {
   flex: 1;
   min-height: 320px;
 }
 
-#relation-input:focus,
-#map-title-input:focus,
-#map-description-input:focus {
+.field-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(230, 184, 76, 0.35);
+}
+
+/* Labels, plus the gap between a label (or its help text) and the field. The
+   .stacked-form forms already separate their rows with `gap`, so they need no
+   top margin of their own. */
+.field-label {
+  display: block;
+  margin-top: 12px;
+  font-family: var(--mono);
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.field-label + .field-input,
+.field-help + .field-input {
+  margin-top: 4px;
+}
+
+.stacked-form .field-label + .field-input {
+  margin-top: 0;
 }
 
 #parse-button {
@@ -761,11 +776,6 @@ button:disabled {
   color: var(--accent);
 }
 
-.field-label {
-  display: block;
-  margin-top: 12px;
-}
-
 .field-help {
   margin: 6px 0 0;
   font-size: 0.78rem;
@@ -810,34 +820,8 @@ button:disabled {
   accent-color: var(--accent);
 }
 
-.page input:not([type="checkbox"]),
-.page select,
-.page textarea,
-.auth-card input:not([type="checkbox"]) {
-  width: 100%;
-  padding: 10px 12px;
-  margin-top: 4px;
-  background: var(--panel-alt);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-family: var(--mono);
-  font-size: 0.85rem;
-  outline: none;
-}
-
-.page input:not([type="checkbox"]):focus,
-.page select:focus,
-.page textarea:focus,
-.auth-card input:not([type="checkbox"]):focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
-}
-
-.page textarea {
-  resize: vertical;
-  line-height: 1.5;
-}
+/* Fields are styled by the shared .field-input class (see "Inputs & controls"),
+   so the admin pages and the login card need no container scoped rules. */
 
 /* Tabs --------------------------------------------------------------------- */
 

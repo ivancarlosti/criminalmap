@@ -11,9 +11,9 @@
         <form method="post" action="/admin/maps" class="stacked-form">
           <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
           <label class="field-label" for="new-map-title" data-i18n="mapTitleLabel">Title</label>
-          <input id="new-map-title" type="text" name="title" value="{{NEW_MAP_TITLE}}" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
+          <input class="field-input" id="new-map-title" type="text" name="title" value="{{NEW_MAP_TITLE}}" maxlength="255" required data-i18n-placeholder="mapTitlePlaceholder" placeholder="Case file name">
           <label class="field-label" for="new-map-description" data-i18n="mapDescriptionLabel">Description</label>
-          <textarea id="new-map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary">{{NEW_MAP_DESCRIPTION}}</textarea>
+          <textarea class="field-input" id="new-map-description" name="description" rows="3" maxlength="2000" data-i18n-placeholder="mapDescriptionPlaceholder" placeholder="Short summary">{{NEW_MAP_DESCRIPTION}}</textarea>
           <label class="checkbox-row">
             <input type="hidden" name="is_public" value="0">
             <input type="checkbox" name="is_public" value="1" checked>
