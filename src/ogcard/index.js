@@ -51,11 +51,15 @@ const inFlight = new Map();
 
 let directoryReady = null;
 let writable = null;
+let warned = false;
 
 /**
- * Create the storage directory and remember whether it can be written to. A
- * read-only volume must not stop the application: cards are then rendered on
- * demand and streamed without being cached on disk.
+ * Create the storage directory and remember whether it can be written to.
+ *
+ * A read-only volume must not stop the application: cards are then rendered on
+ * demand and streamed without being stored. The check runs again on every call,
+ * so fixing the volume permissions is enough — the next write succeeds without
+ * restarting the container.
  *
  * @returns {boolean} true when the directory exists and is writable.
  */
@@ -67,15 +71,29 @@ function ensureDirectory() {
   try {
     fs.mkdirSync(mapsDirectory, { recursive: true });
     fs.accessSync(mapsDirectory, fs.constants.W_OK);
+
+    if (directoryReady === false) {
+      console.log(`[ogcard] ${mapsDirectory} is writable again: cards are being stored.`);
+    }
+
     directoryReady = true;
     writable = true;
+    warned = false;
     return true;
   } catch (error) {
-    if (directoryReady === null) {
+    if (!warned) {
+      warned = true;
+      // The container id lets the operator fix the ownership of the bind mount
+      // straight away, without editing docker-compose or restarting anything.
+      const container = process.env.HOSTNAME || '<container>';
+
       console.warn(
-        `[ogcard] ${mapsDirectory} is not writable (${error.code || error.message}); cards are `
-        + 'rendered on demand but not stored. Mount a writable volume or fix the permissions '
-        + '(the container runs as uid 1000).'
+        `[ogcard] ${mapsDirectory} is not writable (${error.code || error.message}) — cards are `
+        + 'rendered on demand but not stored.\n'
+        + '         Fix it once (no docker-compose change needed):\n'
+        + `           docker exec --user root ${container} chown -R 1000:1000 ${directory}\n`
+        + `         or on the host:  sudo chown -R 1000:1000 <folder mounted at ${directory}>\n`
+        + '         The check is retried on every write, so no restart is needed afterwards.'
       );
     }
 
@@ -83,6 +101,15 @@ function ensureDirectory() {
     writable = false;
     return false;
   }
+}
+
+/**
+ * Storage status for the admin panel.
+ *
+ * @returns {{folder: string, writable: boolean}}
+ */
+function status() {
+  return { folder: mapsDirectory, writable: ensureDirectory() };
 }
 
 /** @returns {string} the directory holding the generated cards. */
@@ -399,5 +426,6 @@ module.exports = {
   refreshById,
   removeCards,
   renderMapCard,
+  status,
   store,
 };

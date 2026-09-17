@@ -1113,6 +1113,20 @@ button:disabled {
   margin: 16px 16px 0;
 }
 
+/* OpenGraph card storage status (Admin → Appearance) ---------------------- */
+
+.storage-status {
+  font-family: var(--mono);
+}
+
+.storage-status-ok {
+  color: var(--success-text);
+}
+
+.storage-status-bad {
+  color: var(--error-text);
+}
+
 /* Map page editor layout --------------------------------------------------- */
 
 .app-main-editor .map-viewer-header {

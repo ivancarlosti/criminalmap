@@ -701,6 +701,9 @@ function adminSettingsData(req, state = {}) {
   );
   const defaultLocale = locales.resolve(read('default_locale', settings.defaultLocale()));
   const defaultTheme = read('default_theme', settings.defaultTheme()) === 'light' ? 'light' : 'dark';
+  // Where the generated OpenGraph cards are stored, and whether they can be
+  // stored at all: a bind mount owned by root is the usual reason for "no".
+  const cardStatus = ogcard.status();
 
   return {
     ...pageData(req, {
@@ -736,6 +739,9 @@ function adminSettingsData(req, state = {}) {
     TWITTER_SITE: read('twitter_site', settings.get('twitter_site', '')),
     OG_IMAGE_URL: read('og_image_url', settings.get('og_image_url', '')),
     OG_CARD_ENABLED: source ? checkboxValue(source, 'og_card_enabled') : settings.getBool('og_card_enabled', true),
+    OG_CARD_FOLDER: cardStatus.folder,
+    OG_CARD_WRITABLE: cardStatus.writable,
+    OG_CARD_READONLY: !cardStatus.writable,
     // String so that "0 regenerated" still renders the banner.
     CARDS_OK: state.cards === null || state.cards === undefined ? '' : String(state.cards),
     CUSTOM_HEAD: read('custom_head', settings.get('custom_head', '')),

@@ -549,21 +549,46 @@ shared map link shows a real preview instead of the generic one:
 ### Permissions on the image folder
 
 The container runs as the unprivileged `node` user (uid 1000), while a bind mount
-is created by Docker as `root`. In Compose, make the host folder writable once:
+is created by Docker as `root`. Make the folder writable by the container user
+once — two equivalent ways, **neither of them needs a `docker-compose` change**:
 
 ```bash
-cd docker
-mkdir -p webimages
-sudo chown -R 1000:1000 webimages
+# from the host, using the container itself (no sudo needed; works on the
+# currently running container and fixes the host folder at the same time,
+# because a bind mount is the same inode on both sides)
+docker exec --user root criminalmap chown -R 1000:1000 /app/webimages
+
+# or directly on the host folder
+cd docker && mkdir -p webimages && sudo chown -R 1000:1000 webimages
 ```
 
-Without that the application still runs: it logs
-`[ogcard] … is not writable`, renders the cards on demand and serves them with
-`Cache-Control: no-store` instead of failing. Prefer a Docker managed volume?
-Comment the bind mount out in [`docker/docker-compose.yml`](docker/docker-compose.yml:1),
-uncomment the `volumes:` block at the bottom and use
-`- webimages:/app/webimages`; named volumes inherit the ownership set in the
-image, so no `chown` is needed.
+`criminalmap` is the container name (`docker ps` shows it; the same value is
+printed in the warning below as `<container>`). **No restart is needed**: the
+writability check runs again on every write, so the next map save (or the next
+request for a card that is not stored yet) writes the files and the log says
+`[ogcard] … is writable again`.
+
+The status is also visible in the admin panel: *Settings → Appearance* shows the
+folder and whether it is **writable**, with the command above when it is not.
+
+Without the fix the application still runs: it logs
+
+```text
+[ogcard] /app/webimages/maps is not writable (EACCES) — cards are rendered on demand but not stored.
+         Fix it once (no docker-compose change needed):
+           docker exec --user root <container> chown -R 1000:1000 /app/webimages
+         or on the host:  sudo chown -R 1000:1000 <folder mounted at /app/webimages>
+         The check is retried on every write, so no restart is needed afterwards.
+```
+
+and serves the cards with `Cache-Control: no-store` instead of failing. Prefer a
+Docker managed volume? Comment the bind mount out in
+[`docker/docker-compose.yml`](docker/docker-compose.yml:1), uncomment the
+`volumes:` block at the bottom and use `- webimages:/app/webimages`; named
+volumes inherit the ownership set in the image, so no `chown` is needed. Running
+the image as root, or shipping an entrypoint that fixes the ownership before
+dropping privileges to `node`, are the other alternatives — both require
+rebuilding the image.
 
 ---
 
