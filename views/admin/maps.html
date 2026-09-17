@@ -29,7 +29,7 @@
         <span class="map-row-counts">{{node_count}} / {{edge_count}}</span>
       </header>
 
-      <form method="post" action="/admin/maps/{{id}}/update" class="map-row-form">
+      <form method="post" action="/admin/maps/{{id}}/update" id="map-update-{{id}}" class="map-row-form">
         <input type="hidden" name="_csrf" value="{{csrf}}">
         <input type="hidden" name="return_to" value="/admin/maps">
         <label class="field-label" for="map-title-{{id}}" data-i18n="mapTitleLabel">Title</label>
@@ -41,12 +41,10 @@
           <input type="checkbox" name="is_public" value="1" {{#if is_public}}checked{{/if}}>
           <span data-i18n="mapPublicLabel">Publicly readable</span>
         </label>
-        <div class="button-row">
-          <button type="submit" data-i18n="mapUpdateButton">Save details</button>
-        </div>
       </form>
 
       <div class="button-row">
+        <button type="submit" form="map-update-{{id}}" data-i18n="mapUpdateButton">Save details</button>
         <a class="button-link" href="{{url}}" data-i18n="mapViewButton">View map</a>
         <form method="post" action="/admin/maps/{{id}}/delete" class="inline-form" data-confirm="mapsDeleteConfirm">
           <input type="hidden" name="_csrf" value="{{csrf}}">

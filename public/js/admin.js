@@ -16,6 +16,7 @@
   function initTabs() {
     const tabs = Array.prototype.slice.call(document.querySelectorAll('.tab-btn'));
     const panels = Array.prototype.slice.call(document.querySelectorAll('.tab-panel'));
+    const scoped = Array.prototype.slice.call(document.querySelectorAll('[data-tab-scope]'));
 
     if (tabs.length === 0) {
       return;
@@ -42,6 +43,13 @@
 
       panels.forEach((panel) => {
         panel.classList.toggle('hidden', panel.dataset.tab !== name);
+      });
+
+      // Blocks with data-tab-scope are only visible on the listed tabs (e.g. the
+      // settings save button, which has no meaning inside Maintenance).
+      scoped.forEach((block) => {
+        const names = block.dataset.tabScope.split(/\s+/);
+        block.classList.toggle('hidden', names.indexOf(name) === -1);
       });
 
       try {

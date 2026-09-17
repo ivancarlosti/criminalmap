@@ -939,6 +939,13 @@ button:disabled {
   flex-direction: column;
 }
 
+/* The row buttons (Save details, View map, Delete) share a single line and are
+   kept clear of the fields above them. */
+.map-row .button-row {
+  margin-top: 14px;
+  gap: 12px;
+}
+
 /* Auth page ---------------------------------------------------------------- */
 
 .app-main-centered {
