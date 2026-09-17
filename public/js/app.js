@@ -102,6 +102,7 @@
     modalBody: document.getElementById('modal-body'),
     modalClose: document.getElementById('modal-close'),
     copyMapUrl: document.getElementById('copy-map-url'),
+    copyRelations: document.getElementById('copy-relations'),
   };
 
   /** @returns {string} the active theme name. */
@@ -279,6 +280,13 @@
    * @param {Object} network
    */
   function freezePhysics(network) {
+    // Freezing always cancels a pending "relax for a moment" timer, so the
+    // solver can never come back to life on its own after it was stopped.
+    if (state.settleTimer) {
+      global.clearTimeout(state.settleTimer);
+      state.settleTimer = null;
+    }
+
     const physics = network.physics;
 
     if (!physics || !physics.options || physics.options.enabled === false) {
@@ -295,7 +303,9 @@
 
   /**
    * Let the solver relax for a moment (smooth, damped movement) and freeze it
-   * again, so a moved graph settles instead of jiggling forever.
+   * again. Used when the graph content changes (initial load, Process), where
+   * the new nodes still have to find a place. Releasing a dragged node never
+   * goes through this path: the graph must not rearrange on its own.
    *
    * @param {Object} network
    */
@@ -345,7 +355,10 @@
       network.setOptions({ physics: { enabled: true } });
     });
 
-    network.on('dragEnd', () => settlePhysics(network));
+    // Releasing a node does NOT rearrange the graph: the solver is frozen right
+    // away so every node keeps the position it had when the drag ended. The
+    // layout only moves while the user is actually dragging a node.
+    network.on('dragEnd', () => freezePhysics(network));
   }
 
   /**
@@ -813,20 +826,29 @@
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text }),
+        // "replace": the textarea carries the relations already saved in the
+        // map, so saving writes the whole set (lines may be added or removed).
+        body: JSON.stringify({ text, mode: 'replace' }),
       });
 
       if (!response.ok) {
-        const message = response.status === 400
-          ? I18n.translate('errorNoValidLines')
-          : I18n.translate('errorRequestFailed');
-        global.alert(message);
+        // A 400 carries the offending lines: nothing was saved, so tell the
+        // editor how many lines have to be fixed instead of blaming them all.
+        const problem = await response.json().catch(() => null);
+        const invalidLines = problem && Array.isArray(problem.invalidLines) ? problem.invalidLines.length : 0;
+
+        if (invalidLines > 0) {
+          global.alert(I18n.translate('errorInvalidLines', { count: invalidLines }));
+        } else {
+          global.alert(I18n.translate(response.status === 400 ? 'errorNoValidLines' : 'errorRequestFailed'));
+        }
+
         return;
       }
 
       const payload = await response.json();
       renderGraph({ nodes: payload.nodes || [], edges: payload.edges || [] });
-      elements.textarea.value = '';
+      // The textarea keeps exactly what was saved, so it stays copyable.
     } catch (err) {
       console.error('Parse request failed:', err);
       global.alert(I18n.translate('errorRequestFailed'));
@@ -868,6 +890,40 @@
     }
   }
 
+  /**
+   * Copy a piece of text to the clipboard, falling back to a hidden textarea on
+   * browsers that do not expose the asynchronous Clipboard API.
+   *
+   * @param {string} text
+   * @returns {Promise<void>}
+   */
+  async function copyTextToClipboard(text) {
+    if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
+      await global.navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const helper = document.createElement('textarea');
+    helper.value = text;
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand('copy');
+    helper.remove();
+  }
+
+  /**
+   * Show the "copied" label on a button for a moment, then restore its own one.
+   *
+   * @param {HTMLElement} button
+   * @param {string} idleKey i18n key of the button's regular label
+   */
+  function flashCopiedLabel(button, idleKey) {
+    button.textContent = I18n.translate('copyLinkDone');
+    global.setTimeout(() => {
+      button.textContent = I18n.translate(idleKey);
+    }, 2000);
+  }
+
   async function handleCopyMapUrl() {
     const button = elements.copyMapUrl;
     const url = button.dataset.mapUrl || '';
@@ -877,24 +933,47 @@
     }
 
     try {
-      if (global.navigator && global.navigator.clipboard && global.navigator.clipboard.writeText) {
-        await global.navigator.clipboard.writeText(url);
-      } else {
-        const helper = document.createElement('input');
-        helper.value = url;
-        document.body.appendChild(helper);
-        helper.select();
-        document.execCommand('copy');
-        helper.remove();
-      }
-
-      button.textContent = I18n.translate('copyLinkDone');
-      global.setTimeout(() => {
-        button.textContent = I18n.translate('copyLinkButton');
-      }, 2000);
+      await copyTextToClipboard(url);
+      flashCopiedLabel(button, 'copyLinkButton');
     } catch (err) {
       console.error('Could not copy the map URL:', err);
     }
+  }
+
+  /**
+   * Copy the relations shown in the editor: the data loaded for this map plus
+   * anything added or removed since, so it can be pasted somewhere else.
+   */
+  async function handleCopyRelations() {
+    const button = elements.copyRelations;
+    const text = elements.textarea ? elements.textarea.value : '';
+
+    if (text === '') {
+      return;
+    }
+
+    try {
+      await copyTextToClipboard(text);
+      flashCopiedLabel(button, 'copyRelationsButton');
+    } catch (err) {
+      console.error('Could not copy the relations:', err);
+    }
+  }
+
+  /**
+   * Middle mouse button on the graph area: reset the zoom and frame the whole
+   * graph again, exactly as the help popup promises.
+   *
+   * @param {MouseEvent} event
+   */
+  function handleGraphMiddleClick(event) {
+    if (event.button !== 1 || !state.network) {
+      return;
+    }
+
+    // Also stops the browser's middle-click auto-scroll from hijacking it.
+    event.preventDefault();
+    state.network.fit(fitOptions(true));
   }
 
   function bindEvents() {
@@ -908,6 +987,14 @@
 
     if (elements.copyMapUrl) {
       elements.copyMapUrl.addEventListener('click', handleCopyMapUrl);
+    }
+
+    if (elements.copyRelations) {
+      elements.copyRelations.addEventListener('click', handleCopyRelations);
+    }
+
+    if (elements.network) {
+      elements.network.addEventListener('mousedown', handleGraphMiddleClick);
     }
 
     elements.modalClose.addEventListener('click', closeModal);

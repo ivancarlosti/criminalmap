@@ -6,13 +6,14 @@ const path = require('path');
 const express = require('express');
 
 const { initDatabase } = require('./src/db');
-const { parseTextWithDetails } = require('./src/parser');
+const { formatRelations, parseTextWithDetails } = require('./src/parser');
 const { EXAMPLE_TEXT, exampleMapDescription, exampleMapTitle } = require('./src/seed');
 const locales = require('./src/locales');
 const maps = require('./src/maps');
 const render = require('./src/render');
 const settings = require('./src/settings');
 const auth = require('./src/auth');
+const ogcard = require('./src/ogcard');
 
 const PORT = Number(process.env.PORT) || 8080;
 const DOMAIN = process.env.DOMAIN || null;
@@ -84,6 +85,58 @@ function absoluteUrl(req, pathname) {
  */
 function mapUrl(req, shortId) {
   return absoluteUrl(req, `/${settings.mapPathPrefix()}/${shortId}`);
+}
+
+/**
+ * Public path of the current OpenGraph card of a map, or '' when the feature is
+ * disabled. The file name is derived from the map row alone, so rendering a page
+ * never has to touch the database again for the image.
+ *
+ * @param {Object} map
+ * @returns {string}
+ */
+function mapCardPath(map) {
+  if (!map || !settings.getBool('og_card_enabled', true)) {
+    return '';
+  }
+
+  return ogcard.publicPath(ogcard.fileNameFor(map));
+}
+
+/**
+ * pageData() options for the generated card of a map.
+ *
+ * @param {import('express').Request} req
+ * @param {Object} map
+ * @returns {Object} empty when the map has no card (feature off / no map)
+ */
+function cardImageOptions(req, map) {
+  const cardPath = mapCardPath(map);
+
+  if (cardPath === '') {
+    return {};
+  }
+
+  return {
+    ogImage: absoluteUrl(req, cardPath),
+    ogImageSize: { width: ogcard.CARD_WIDTH, height: ogcard.CARD_HEIGHT },
+  };
+}
+
+/**
+ * Regenerate the OpenGraph card of a map after it changed. src/ogcard logs its
+ * own failures and never throws, so saving a map can never fail because of the
+ * image.
+ *
+ * @param {Object} map
+ * @returns {Promise<void>}
+ */
+async function refreshCard(map) {
+  if (!map || !settings.getBool('og_card_enabled', true)) {
+    return;
+  }
+
+  await ogcard.refresh(map);
 }
 
 /**
@@ -178,9 +231,10 @@ function faviconLinks(url) {
 /**
  * @param {string} imageUrl
  * @param {string} title
+ * @param {{width: number, height: number}} [size] known dimensions of the image
  * @returns {string} OpenGraph/Twitter image meta tags, or an empty string.
  */
-function imageMeta(imageUrl, title) {
+function imageMeta(imageUrl, title, size) {
   const value = String(imageUrl || '').trim();
 
   if (value === '') {
@@ -188,11 +242,26 @@ function imageMeta(imageUrl, title) {
   }
 
   const escaped = render.escapeHtml(value);
-  return [
+  const tags = [
     `<meta property="og:image" content="${escaped}">`,
     `<meta property="og:image:alt" content="${render.escapeHtml(title)}">`,
-    `<meta name="twitter:image" content="${escaped}">`,
-  ].join('\n  ');
+  ];
+
+  if (size && size.width > 0 && size.height > 0) {
+    // Only emitted for the cards this application generates: the dimensions of
+    // an external og_image_url are unknown, and wrong values make some crawlers
+    // render the wrong crop.
+    tags.push(
+      '<meta property="og:image:type" content="image/png">',
+      `<meta property="og:image:width" content="${Math.round(size.width)}">`,
+      `<meta property="og:image:height" content="${Math.round(size.height)}">`
+    );
+  }
+
+  tags.push(`<meta name="twitter:image" content="${escaped}">`);
+  tags.push(`<meta name="twitter:image:alt" content="${render.escapeHtml(title)}">`);
+
+  return tags.join('\n  ');
 }
 
 /**
@@ -240,7 +309,7 @@ function pageData(req, options = {}) {
     SITE_SUBTITLE: siteSubtitle,
     SITE_LOGO_URL: logoUrl,
     SHOW_BRAND_TEXT: logoUrl === '',
-    OG_IMAGE_META: imageMeta(image, title),
+    OG_IMAGE_META: imageMeta(image, title, options.ogImageSize),
     TWITTER_CARD: image !== '' ? 'summary_large_image' : 'summary',
     TWITTER_SITE_META: twitterSiteMeta(settings.get('twitter_site', '')),
     TWITTER_IMAGE_META: '',
@@ -368,6 +437,48 @@ app.get('/site.webmanifest', (req, res) => {
 // Public JSON API
 // ---------------------------------------------------------------------------
 
+// GET /media/maps/<shortId>-<version>.png -> generated OpenGraph card.
+//
+// Cards are stored on the WEBIMAGES_DIR volume. When the requested name is the
+// current version of the map, the file is generated if it is missing, so a
+// deployment with an empty volume heals itself on the first hit. An older
+// version answers 302 to the current one, which keeps the immutable cache
+// header honest for crawlers that still hold the previous URL.
+app.get(`${ogcard.MEDIA_BASE}/:file`, asyncHandler(async (req, res) => {
+  if (!settings.getBool('og_card_enabled', true)) {
+    return res.status(404).type('text/plain').send('Not found');
+  }
+
+  const parsed = ogcard.parseFileName(req.params.file);
+
+  if (!parsed) {
+    return res.status(404).type('text/plain').send('Not found');
+  }
+
+  const map = await maps.findMapByShortId(parsed.shortId);
+
+  if (!map || (!map.is_public && !auth.isAdmin(req))) {
+    return res.status(404).type('text/plain').send('Not found');
+  }
+
+  const current = ogcard.fileNameFor(map);
+
+  if (current !== req.params.file) {
+    return res.redirect(302, ogcard.publicPath(current));
+  }
+
+  const card = await ogcard.generate(map, { force: !ogcard.exists(current) });
+
+  res.setHeader('Cache-Control', card.stored ? 'public, max-age=31536000, immutable' : 'no-store');
+
+  if (card.stored) {
+    return res.type('image/png').sendFile(card.path);
+  }
+
+  // Read-only volume: serve the freshly rendered image without storing it.
+  return res.type('image/png').send(card.buffer);
+}));
+
 // GET /api/settings -> public settings used by the frontend bootstrap.
 app.get('/api/settings', (req, res) => {
   res.json({
@@ -378,7 +489,10 @@ app.get('/api/settings', (req, res) => {
   });
 });
 
-// POST /api/maps/:shortId/parse -> append parsed relations to a saved map.
+// POST /api/maps/:shortId/parse -> append the parsed relations to a saved map,
+// or replace every relation of the map when the body sends "mode": "replace"
+// (that is what the map editor uses: its textarea holds the relations already
+// saved in the map, so lines can be added or removed before saving).
 app.post('/api/maps/:shortId/parse', auth.requireAdmin, asyncHandler(async (req, res) => {
   const map = await maps.findMapByShortId(req.params.shortId);
 
@@ -387,6 +501,7 @@ app.post('/api/maps/:shortId/parse', auth.requireAdmin, asyncHandler(async (req,
   }
 
   const text = req.body && typeof req.body.text === 'string' ? req.body.text : '';
+  const mode = req.body && req.body.mode === 'replace' ? 'replace' : 'append';
 
   if (text.trim() === '') {
     return res.status(400).json({
@@ -403,10 +518,26 @@ app.post('/api/maps/:shortId/parse', auth.requireAdmin, asyncHandler(async (req,
     });
   }
 
+  // Replacing discards what is stored, so a single invalid line aborts the
+  // whole request instead of silently dropping relations.
+  if (mode === 'replace' && invalidLines.length > 0) {
+    return res.status(400).json({
+      error: 'Every line must be a valid relation when replacing the map relations.',
+      invalidLines,
+    });
+  }
+
+  if (mode === 'replace') {
+    await maps.clearMapGraph(map.id);
+  }
+
   await maps.insertMapRelations(map.id, relations);
 
   const payload = await maps.fetchMapGraph(map.id);
   const updated = await maps.findMapById(map.id);
+
+  // The card shows the entity/connection counts, so every save regenerates it.
+  await refreshCard(updated);
 
   return res.json({
     map: {
@@ -430,6 +561,9 @@ app.delete('/api/maps/:shortId/graph', auth.requireAdmin, asyncHandler(async (re
   }
 
   const removed = await maps.clearMapGraph(map.id);
+
+  // An emptied map still gets a card (title, description, "no entities").
+  await refreshCard(await maps.findMapById(map.id));
 
   return res.json({ success: true, removed });
 }));
@@ -601,6 +735,9 @@ function adminSettingsData(req, state = {}) {
     SITE_URL_RAW: read('site_url', settings.siteUrl()),
     TWITTER_SITE: read('twitter_site', settings.get('twitter_site', '')),
     OG_IMAGE_URL: read('og_image_url', settings.get('og_image_url', '')),
+    OG_CARD_ENABLED: source ? checkboxValue(source, 'og_card_enabled') : settings.getBool('og_card_enabled', true),
+    // String so that "0 regenerated" still renders the banner.
+    CARDS_OK: state.cards === null || state.cards === undefined ? '' : String(state.cards),
     CUSTOM_HEAD: read('custom_head', settings.get('custom_head', '')),
     CUSTOM_CSS: read('custom_css', settings.get('custom_css', '')),
     CUSTOM_JS: read('custom_js', settings.get('custom_js', '')),
@@ -657,6 +794,7 @@ async function persistSettings(body) {
     ['site_url', fieldValue(body.site_url).trim()],
     ['twitter_site', fieldValue(body.twitter_site).trim()],
     ['og_image_url', fieldValue(body.og_image_url).trim()],
+    ['og_card_enabled', checkboxValue(body, 'og_card_enabled') ? '1' : '0'],
     ['robots_enabled', checkboxValue(body, 'robots_enabled') ? '1' : '0'],
     ['robots_content', fieldValue(body.robots_content)],
     ['sitemap_enabled', checkboxValue(body, 'sitemap_enabled') ? '1' : '0'],
@@ -719,9 +857,12 @@ app.get('/admin', auth.requireAdmin, (req, res) => {
 
 // GET /admin/settings -> tabbed settings form.
 app.get('/admin/settings', auth.requireAdmin, (req, res) => {
+  const generated = Number.parseInt(req.query.cards, 10);
+
   res.send(render.renderPage('admin/settings.html', adminSettingsData(req, {
     saved: req.query.saved === '1',
     seeded: req.query.seeded === '1',
+    cards: Number.isInteger(generated) ? generated : null,
   })));
 });
 
@@ -769,6 +910,8 @@ app.post('/admin/maps', auth.requireAdmin, auth.requireCsrf, asyncHandler(async 
     isPublic: checkboxValue(req.body, 'is_public'),
   });
 
+  await refreshCard(map);
+
   return res.redirect(`/${settings.mapPathPrefix()}/${map.short_id}`);
 }));
 
@@ -780,11 +923,14 @@ app.post('/admin/maps/:id/update', auth.requireAdmin, auth.requireCsrf, asyncHan
     return res.status(404).type('text/plain').send('Map not found');
   }
 
-  await maps.updateMapMeta(map.id, {
+  const updated = await maps.updateMapMeta(map.id, {
     title: fieldValue(req.body.title),
     description: fieldValue(req.body.description),
     isPublic: checkboxValue(req.body, 'is_public'),
   });
+
+  // Title, description and visibility are all painted on the card.
+  await refreshCard(updated);
 
   const returnTo = safeReturn(req.body.return_to) || '/admin/maps';
   const separator = returnTo.includes('?') ? '&' : '?';
@@ -794,7 +940,14 @@ app.post('/admin/maps/:id/update', auth.requireAdmin, auth.requireCsrf, asyncHan
 
 // POST /admin/maps/:id/delete -> remove a saved map.
 app.post('/admin/maps/:id/delete', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
+  const map = await maps.findMapById(req.params.id);
+
   await maps.deleteMap(req.params.id);
+
+  if (map) {
+    // The card of a deleted map must not linger on the volume.
+    ogcard.removeCards(map.short_id);
+  }
 
   return res.redirect('/admin/maps?deleted=1');
 }));
@@ -811,7 +964,28 @@ app.post('/admin/maintenance/demo-map', auth.requireAdmin, auth.requireCsrf, asy
 
   await maps.insertMapRelations(map.id, relations);
 
+  await refreshCard(await maps.findMapById(map.id));
+
   return res.redirect('/admin/settings?seeded=1');
+}));
+
+// POST /admin/maintenance/og-cards -> regenerate every OpenGraph card.
+//
+// Useful after changing the site title, the domain or the default theme, since
+// all of those are painted on the cards.
+app.post('/admin/maintenance/og-cards', auth.requireAdmin, auth.requireCsrf, asyncHandler(async (req, res) => {
+  const all = await maps.listMaps();
+  let generated = 0;
+
+  for (const row of all) {
+    const map = await maps.findMapById(row.id);
+
+    if (map && await ogcard.refresh(map)) {
+      generated += 1;
+    }
+  }
+
+  return res.redirect(`/admin/settings?cards=${generated}`);
 }));
 
 
@@ -847,7 +1021,7 @@ async function homeData(req, state = {}) {
     || (all.length > 0 ? all[Math.floor(Math.random() * all.length)] : null);
 
   return {
-    ...pageData(req, { pageScripts: APP_SCRIPT }),
+    ...pageData(req, { pageScripts: APP_SCRIPT, ...cardImageOptions(req, selected) }),
     MAPS: all.map((map) => {
       const isSelected = selected !== null && map.short_id === selected.short_id;
 
@@ -912,6 +1086,7 @@ app.get(
       ogType: 'article',
       showHomeLink: true,
       pageScripts: APP_SCRIPT,
+      ...cardImageOptions(req, map),
     });
 
     data.MAP_ID = map.id;
@@ -926,6 +1101,11 @@ app.get(
     data.RETURN_TO = `/${prefix}/${map.short_id}`;
     data.PARSE_ENDPOINT = `/api/maps/${map.short_id}/parse`;
     data.CLEAR_ENDPOINT = `/api/maps/${map.short_id}/graph`;
+    // The editor textarea holds the relations already saved in the map, so they
+    // can be copied, edited (added/removed) and saved again as the full set.
+    data.RELATIONS_TEXT = data.CAN_EDIT_MAP ? formatRelations(await maps.fetchMapGraph(map.id)) : '';
+    // Preview of the generated card (administrators only).
+    data.OG_CARD_URL = data.CAN_EDIT_MAP ? mapCardPath(map) : '';
     data.UPDATED_OK = req.query.updated === '1';
 
     return res.send(render.renderPage('map.html', data));
@@ -980,6 +1160,8 @@ async function ensureInitialMap() {
       `Initial map published: ${settings.mapPathPrefix()}/${map.short_id} (${map.title})`
     );
   }
+
+  await refreshCard(map);
 }
 
 /**
@@ -991,6 +1173,10 @@ async function main() {
   try {
     await initDatabase();
     await settings.load();
+
+    // Make sure the OpenGraph card volume is usable before anything tries to
+    // write to it (a read-only mount is reported and the app keeps running).
+    ogcard.ensureDirectory();
     await ensureInitialMap();
 
     if (!auth.credentialsConfigured()) {

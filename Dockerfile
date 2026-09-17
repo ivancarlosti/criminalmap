@@ -30,16 +30,29 @@ COPY db/ ./db/
 COPY public/ ./public/
 COPY views/ ./views/
 
+# Generated OpenGraph cards live outside the application tree so they can be
+# kept on a volume (docker/docker-compose.yml maps ./webimages here). WEBIMAGES_DIR
+# points the application at it, and the directory is created while still root so
+# the unprivileged runtime user can write to a fresh named volume — a bind mount
+# keeps the permissions of the host directory, which is documented in the README.
+ENV WEBIMAGES_DIR=/app/webimages
+RUN mkdir -p /app/webimages/maps && chown -R node:node /app/webimages
+
 # Run as the unprivileged "node" user provided by the base image.
 USER node
 
-# The application listens on port 8080 by default (see server.js).
+# The application listens on 8080 by default (see server.js). Overriding PORT
+# inside the container is possible, but then the container side of the compose
+# port mapping must match it.
 EXPOSE 8080
 
-# Health check: confirm the API responds. The HTTP server only starts after
-# the database connection and schema bootstrap complete, so the start period
-# is intentionally generous.
+# Health check: GET /api/settings is public (no session needed) and only answers
+# 200 once the database connection, the schema bootstrap and the settings cache
+# are ready — exactly the readiness signal this check needs. The port is read
+# from $PORT inside the Node process, so the check follows an overridden port
+# instead of assuming 8080. The start period is intentionally generous because
+# the HTTP server starts only after the database work above.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
-  CMD node -e "require('http').get('http://127.0.0.1:8080/api/nodes', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+  CMD ["node", "-e", "const p = process.env.PORT || 8080; require('http').get('http://127.0.0.1:' + p + '/api/settings', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"]
 
 CMD ["node", "server.js"]

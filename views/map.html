@@ -24,14 +24,21 @@
         </div>
       </form>
 
-      <h2 class="side-heading" data-i18n="mapRelationsHeading">Add relations</h2>
+      <h2 class="side-heading" data-i18n="mapRelationsHeading">Relations</h2>
       <label class="field-label" for="relation-input" data-i18n="textareaLabel">Relations text</label>
-      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder" placeholder="[Name] -> [Name] : Description | Sources: url1, url2"></textarea>
-      <p class="field-help" data-i18n="mapRelationsHelp">Paste new relations and press Process to append them to this map.</p>
+      <textarea id="relation-input" spellcheck="false" data-i18n-placeholder="textareaPlaceholder" placeholder="[Name] -> [Name] : Description | Sources: url1, url2">{{RELATIONS_TEXT}}</textarea>
+      <p class="field-help" data-i18n="mapRelationsHelp">These are the relations saved in this map. Edit, add or remove lines and press Process to save.</p>
       <div class="button-row">
         <button id="parse-button" type="button" data-i18n="parseButton">Process</button>
+        <button id="copy-relations" type="button" class="secondary-button" data-i18n="copyRelationsButton">Copy data</button>
         <button id="clear-button" type="button" class="secondary-button" data-i18n="clearButton">Clear map</button>
       </div>
+
+      {{#if OG_CARD_URL}}
+        <h2 class="side-heading" data-i18n="ogCardPreviewHeading">Social card</h2>
+        <img class="og-card-preview" src="{{OG_CARD_URL}}" alt="" loading="lazy">
+        <p class="field-help" data-i18n="ogCardPreviewHelp">Image used when this map is shared on social networks. It is regenerated whenever the map is saved.</p>
+      {{/if}}
     </aside>
   {{/if}}
 

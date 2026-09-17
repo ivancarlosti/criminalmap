@@ -27,6 +27,10 @@ LICENSE
 tmp
 *.tmp
 
+# Generated images — never part of the build context.
+webimages
+docker/webimages
+
 # OS / editor cruft.
 .DS_Store
 Thumbs.db

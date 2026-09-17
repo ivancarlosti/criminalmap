@@ -172,9 +172,13 @@ body.modal-open {
 
 /* Inputs & controls -------------------------------------------------------- */
 
-#relation-input {
-  flex: 1;
-  min-height: 320px;
+/* The whole editor panel (title, description and relations) shares one field
+   style: without it the title/description boxes kept the browser default (white
+   background, sans-serif font) instead of following the theme. */
+
+#relation-input,
+#map-title-input,
+#map-description-input {
   width: 100%;
   padding: 12px 14px;
   resize: vertical;
@@ -188,7 +192,14 @@ body.modal-open {
   outline: none;
 }
 
-#relation-input:focus {
+#relation-input {
+  flex: 1;
+  min-height: 320px;
+}
+
+#relation-input:focus,
+#map-title-input:focus,
+#map-description-input:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px rgba(230, 184, 76, 0.35);
 }
@@ -394,6 +405,22 @@ body.modal-open {
 
 .source-list a:hover {
   text-decoration: underline;
+}
+
+/* Help popup (opened by the "?" button in the header) ---------------------- */
+
+.help-list {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.help-list li::marker {
+  color: var(--accent);
 }
 
 /* Responsive --------------------------------------------------------------- */
@@ -1090,6 +1117,17 @@ button:disabled {
 
 .app-main-editor .map-viewer-header {
   padding: 0 0 6px;
+}
+
+/* Preview of the generated OpenGraph card inside the map editor. */
+.og-card-preview {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--network-bg);
 }
 
 .app-main-editor .input-panel #relation-input {

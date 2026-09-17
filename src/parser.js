@@ -69,4 +69,32 @@ function parseText(text) {
   return parseTextWithDetails(text).relations;
 }
 
-module.exports = { RELATION_REGEX, parseText, parseTextWithDetails };
+/**
+ * Format a graph payload back into the plain-text relation syntax.
+ *
+ * This is the inverse of parseTextWithDetails(): it is used to pre-fill the map
+ * editor with the relations already saved in a map, so the textarea can be
+ * edited (lines added or removed) before the map is saved again.
+ *
+ * @param {{nodes?: Array<{id: number|string, label: string}>, edges?: Array<{from: number|string, to: number|string, topic_description?: string, sources?: string[]}>}} [graph]
+ * @returns {string} one line per edge, in the order the edges are given.
+ */
+function formatRelations(graph) {
+  const nodes = graph && Array.isArray(graph.nodes) ? graph.nodes : [];
+  const edges = graph && Array.isArray(graph.edges) ? graph.edges : [];
+  const labelById = new Map(nodes.map((node) => [node.id, node.label]));
+
+  return edges
+    .map((edge) => {
+      const from = labelById.get(edge.from) || String(edge.from);
+      const to = labelById.get(edge.to) || String(edge.to);
+      const topic = typeof edge.topic_description === 'string' ? edge.topic_description.trim() : '';
+      const sources = Array.isArray(edge.sources) ? edge.sources : [];
+      const sourcesPart = sources.length > 0 ? ` | Fontes: ${sources.join(', ')}` : '';
+
+      return `[${from}] -> [${to}] : ${topic}${sourcesPart}`;
+    })
+    .join('\n');
+}
+
+module.exports = { RELATION_REGEX, formatRelations, parseText, parseTextWithDetails };

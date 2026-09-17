@@ -2,6 +2,10 @@
   <div class="banner banner-success" data-i18n="maintenanceMapSeeded">Example map created.</div>
 {{/if}}
 
+{{#if CARDS_OK}}
+  <div class="banner banner-success"><span data-i18n="maintenanceCardsRegenerated">OpenGraph images regenerated:</span> {{CARDS_OK}}</div>
+{{/if}}
+
 <main class="page">
 {{#if SAVED_OK}}
   <div class="banner banner-success" data-i18n="settingsSaved">Settings saved.</div>
@@ -141,6 +145,13 @@
       </div>
     </div>
 
+    <label class="checkbox-row">
+      <input type="hidden" name="og_card_enabled" value="0">
+      <input type="checkbox" name="og_card_enabled" value="1" {{#if OG_CARD_ENABLED}}checked{{/if}}>
+      <span data-i18n="settingsOgCardEnabled">Generate an OpenGraph image per map</span>
+    </label>
+    <p class="field-help" data-i18n="settingsOgCardEnabledHelp">Every map gets its own 1200x630 image (title, description, counts and a sketch of the network), regenerated when the map changes. Used by the map pages and by the home preview; the default image above is the fallback.</p>
+
     <label class="field-label" for="twitter-site" data-i18n="settingsTwitterSite">X/Twitter account</label>
     <input id="twitter-site" type="text" name="twitter_site" value="{{TWITTER_SITE}}" maxlength="64" placeholder="@yourhandle">
     <p class="field-help" data-i18n="settingsTwitterSiteHelp">Optional. Rendered as the twitter:site meta tag.</p>
@@ -177,7 +188,12 @@
       <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
       <button type="submit" class="secondary-button" data-i18n="maintenanceSeedMap">Restore example map</button>
     </form>
+    <form method="post" action="/admin/maintenance/og-cards" class="inline-form">
+      <input type="hidden" name="_csrf" value="{{CSRF_TOKEN}}">
+      <button type="submit" class="secondary-button" data-i18n="maintenanceRegenerateCards">Regenerate OpenGraph images</button>
+    </form>
   </div>
+  <p class="field-help" data-i18n="maintenanceRegenerateCardsHelp">Run this after changing the site title, the domain or the default theme: those are painted on every card.</p>
 
   <p class="field-help mt"><span data-i18n="maintenanceSignedInAs">Signed in as</span> <strong>{{ADMIN_EMAIL}}</strong></p>
 </section>

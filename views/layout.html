@@ -29,6 +29,7 @@
   <script src="/js/vis-loader.js" defer></script>
   <script src="/js/i18n.js" defer></script>
   <script src="/js/theme.js" defer></script>
+  <script src="/js/help.js" defer></script>
   {{{PAGE_SCRIPTS}}}
 
   <script>
@@ -70,6 +71,11 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
         </svg>
       </button>
+      <button type="button" id="help-toggle" class="icon-button" aria-haspopup="dialog" data-i18n-title="helpButtonTitle" title="How to use the graph">
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="icon">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.045 4.262.007 1.19 1.052 1.19 2.743 0 3.795-.35.31-.792.546-1.246.712-.5.183-.892.622-.892 1.192v.35M12 17.25h.008v.008H12v-.008ZM21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+        </svg>
+      </button>
       <div class="lang-control">
         <label class="field-label" for="lang-select" data-i18n="langLabel">Idioma</label>
         <select id="lang-select">
@@ -91,6 +97,26 @@
   </header>
 
   {{{CONTENT}}}
+
+  <!-- Usage help popup, opened by the "?" button in the header. The list items
+       are translated by i18n.js through their data-i18n attributes. -->
+  <div id="help-modal" class="modal-overlay" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
+      <header class="modal-header">
+        <h2 id="help-modal-title" data-i18n="helpHeading">How to use the graph</h2>
+        <button id="help-modal-close" class="modal-close" type="button" data-i18n="modalClose">Close</button>
+      </header>
+      <div class="modal-body">
+        <ul class="help-list">
+          <li data-i18n="helpClickEntities">Click a box or a connection to open its details.</li>
+          <li data-i18n="helpMiddleClick">Middle-click to reset the zoom.</li>
+          <li data-i18n="helpScrollZoom">Scroll to zoom in and out.</li>
+          <li data-i18n="helpDragBox">Drag a box to move the entity.</li>
+          <li data-i18n="helpDragBackground">Drag the background to move around.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
 
   {{{CUSTOM_JS}}}
 </body>

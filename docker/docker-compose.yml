@@ -16,17 +16,51 @@ services:
     # this compose file).
     env_file:
       - .env
-    # The app always listens on 8080 inside the container (see Dockerfile), so
-    # pin that value regardless of the host-side PORT variable below.
+    # PORT means two different things, so both are pinned explicitly:
+    #   - the container side (here): the port the app listens on INSIDE the
+    #     container. The image is built for 8080 and its health check follows
+    #     this value, so this line also makes sure the PORT coming from .env
+    #     (which is the HOST port, see below) is never used inside by mistake.
+    #   - the host side (ports): the port you open in the browser. Change that
+    #     one only — there is no need to touch the container port.
     environment:
       PORT: "8080"
     # Allows the container to reach a MariaDB server running on the Docker host.
     extra_hosts:
       - "host.docker.internal:host-gateway"
-    # Host port (default 8080) maps to the application's container port 8080.
+    # Host port (left, from docker/.env, default 8080) -> container port (right).
     ports:
       - "${PORT:-8080}:8080"
+    # Health check: same command as the image's, defined here as well so
+    # prebuilt images whose own check still targets the previous endpoint/port
+    # report their health correctly. It asks the public /api/settings endpoint
+    # on the container's own $PORT (200 without a session once the database and
+    # the settings cache are ready).
+    healthcheck:
+      test: ["CMD", "node", "-e", "const p = process.env.PORT || 8080; require('http').get('http://127.0.0.1:' + p + '/api/settings', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));"]
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    # Generated OpenGraph images are written here, one 1200x630 card per map.
+    # They must survive container restarts and image upgrades, so they live on
+    # the host at docker/webimages. Docker creates the folder as root while the
+    # application runs as uid 1000, so make it writable once with:
+    #   mkdir -p webimages && sudo chown -R 1000:1000 webimages
+    # (Without that, the app still works: it renders the cards on demand and
+    # logs a warning instead of failing.)
+    #
+    # Prefer a Docker managed volume instead? Comment the bind mount out, add
+    # "webimages:" to the top-level "volumes:" block below and use
+    # "- webimages:/app/webimages" here.
+    volumes:
+      - ./webimages:/app/webimages
     restart: unless-stopped
+
+# Named volume alternative for the generated images (see the volume comment in
+# the criminalmap service above):
+# volumes:
+#   webimages:
 
   # ---------------------------------------------------------------------------
   # OPTIONAL: containerized MariaDB for users who prefer a self-contained stack.

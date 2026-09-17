@@ -30,6 +30,7 @@ const DEFAULT_SETTINGS = {
   site_url: '',
   twitter_site: '',
   og_image_url: '',
+  og_card_enabled: '1',
   robots_enabled: '1',
   sitemap_enabled: '0',
   robots_content: 'User-agent: *\nDisallow: /admin\nDisallow: /auth',

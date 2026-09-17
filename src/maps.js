@@ -115,7 +115,10 @@ async function findMapById(id, pool = getPool()) {
   }
 
   const [rows] = await pool.query(
-    'SELECT id, short_id, title, description, is_public, created_at, updated_at FROM maps WHERE id = ? LIMIT 1',
+    `SELECT m.id, m.short_id, m.title, m.description, m.is_public, m.created_at, m.updated_at,
+            (SELECT COUNT(*) FROM map_nodes n WHERE n.map_id = m.id) AS node_count,
+            (SELECT COUNT(*) FROM map_edges e WHERE e.map_id = m.id) AS edge_count
+       FROM maps m WHERE m.id = ? LIMIT 1`,
     [mapId]
   );
 
@@ -133,6 +136,8 @@ async function findMapById(id, pool = getPool()) {
     is_public: Number(row.is_public) === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    node_count: Number(row.node_count) || 0,
+    edge_count: Number(row.edge_count) || 0,
   };
 }
 
@@ -151,7 +156,10 @@ async function findMapByShortId(shortId, pool = getPool()) {
   }
 
   const [rows] = await pool.query(
-    'SELECT id, short_id, title, description, is_public, created_at, updated_at FROM maps WHERE short_id = ? LIMIT 1',
+    `SELECT m.id, m.short_id, m.title, m.description, m.is_public, m.created_at, m.updated_at,
+            (SELECT COUNT(*) FROM map_nodes n WHERE n.map_id = m.id) AS node_count,
+            (SELECT COUNT(*) FROM map_edges e WHERE e.map_id = m.id) AS edge_count
+       FROM maps m WHERE m.short_id = ? LIMIT 1`,
     [value]
   );
 
@@ -169,6 +177,8 @@ async function findMapByShortId(shortId, pool = getPool()) {
     is_public: Number(row.is_public) === 1,
     created_at: row.created_at,
     updated_at: row.updated_at,
+    node_count: Number(row.node_count) || 0,
+    edge_count: Number(row.edge_count) || 0,
   };
 }
 

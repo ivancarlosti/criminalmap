@@ -23,10 +23,11 @@ edge with a topic description and a list of sources.
 9. [Saved maps and short URLs](#saved-maps-and-short-urls)
 10. [Web standards (robots.txt, sitemap.xml, manifest)](#web-standards-robotstxt-sitemapxml-manifest)
 11. [Themes (dark / light)](#themes-dark--light)
-12. [Graph behaviour](#graph-behaviour)
-13. [Internationalization (i18n)](#internationalization-i18n)
-14. [API endpoints](#api-endpoints)
-15. [GitHub Actions](#github-actions)
+12. [OpenGraph images](#opengraph-images)
+13. [Graph behaviour](#graph-behaviour)
+14. [Internationalization (i18n)](#internationalization-i18n)
+15. [API endpoints](#api-endpoints)
+16. [GitHub Actions](#github-actions)
 
 ---
 
@@ -133,6 +134,12 @@ criminalmap/
 │   ├── locales.js                # Supported locale catalog
 │   ├── auth.js                   # Login, signed session cookie and CSRF
 │   ├── render.js                 # Minimal {{placeholder}} template renderer
+│   ├── ogcard/                   # Generated OpenGraph cards (no image dependency)
+│   │   ├── index.js              # Versioning, storage volume, regeneration API
+│   │   ├── card.js               # Card layout: identity, counts, network sketch
+│   │   ├── font.js               # Built-in single-stroke font (glyph data)
+│   │   ├── draw.js               # Anti-aliased raster primitives
+│   │   └── png.js                # RGB canvas + PNG encoder (Node's zlib)
 │   └── cli/
 │       └── hash-password.js      # `npm run hash-password` helper
 ├── views/                        # Server-rendered HTML templates (not public)
@@ -149,10 +156,11 @@ criminalmap/
 │   ├── css/
 │   │   └── style.css             # Noir dark theme + parchment light theme
 │   ├── js/
-│   │   ├── app.js                # Graph rendering, modals, map editing, copy link
+│   │   ├── app.js                # Graph rendering, modals, map editing, clipboard
 │   │   ├── vis-loader.js         # vis-network loader with a CDN fallback
 │   │   ├── i18n.js               # Locale loading and translation helpers
 │   │   ├── theme.js              # Dark/light toggle and theme-color meta
+│   │   ├── help.js               # "?" usage popup in the header
 │   │   └── admin.js              # Admin tabs and confirm dialogs
 │   └── locales/
 │       ├── pt_BR.json            # Brazilian Portuguese strings
@@ -160,6 +168,7 @@ criminalmap/
 │       └── es_MX.json            # Mexican Spanish strings
 ├── docker/
 │   ├── docker-compose.yml        # Compose service definition
+│   ├── webimages/                # Generated OpenGraph cards (bind mount, git-ignored)
 │   └── .env.example              # Environment template for Docker
 └── .github/
     └── workflows/                # CI/CD (see GitHub Actions section)
@@ -304,13 +313,32 @@ Then open <http://localhost:8080>.
   `host.docker.internal:host-gateway` so the container can reach a MariaDB
   instance running directly on the Docker host. Leave `DB_HOST` as
   `host.docker.internal` if your database is on the host machine.
-- **Reverse-proxy `PORT` / `DOMAIN`**: `PORT` controls the host-side port
-  published to the container (the app itself always listens on `8080` inside
-  the container). `DOMAIN` is optional metadata passed to the app and logged at
+- **Two ports, one variable**: `PORT` in `docker/.env` is the **host** port
+  published by the mapping (`${PORT:-8080}:8080`). The app itself always listens
+  on `8080` **inside** the container, so changing the host port is enough — with
+  `PORT=7899` the app is served at <http://localhost:7899> and nothing else has
+  to change. `DOMAIN` is optional metadata passed to the app and logged at
   startup, useful when the app sits behind a reverse proxy such as Nginx.
+  If you really need the app to listen on another port **inside** the container,
+  set `environment: PORT` and the right-hand side of `ports` to the same value
+  (both the app and the health check read `$PORT`), and keep the host side as
+  the port you want to open in the browser.
+- **Container health**: the health check requests the public `GET /api/settings`
+  on the container's own `PORT` (`8080` by default). That endpoint answers `200`
+  without a session and only once the database connection, the schema bootstrap
+  and the settings cache are ready, which makes it a reliable readiness signal.
+  The check is defined in the image and again in the Compose file (so prebuilt
+  images keep reporting correctly) and reads `$PORT` from the environment.
+  Inspect it with `docker inspect --format '{{json .State.Health}}' criminalmap`
+  and read the probe output with `docker inspect --format '{{json .State.Health.Log}}' criminalmap`.
 - An **optional** containerized MariaDB service is included in the Compose file
   as a commented block. To use it, uncomment the `mariadb` service and the
   `volumes` block, then set `DB_HOST=mariadb` in `docker/.env`.
+- **Generated images** live on the host at `docker/webimages` (mounted at
+  `/app/webimages`). Make it writable by the container user once —
+  `mkdir -p webimages && sudo chown -R 1000:1000 webimages` — or switch to the
+  named volume shown at the bottom of the Compose file. See
+  [OpenGraph images](#opengraph-images).
 
 ---
 
@@ -318,7 +346,8 @@ Then open <http://localhost:8080>.
 
 | Variable      | Default            | Purpose                                        |
 | ------------- | ------------------ | ---------------------------------------------- |
-| `PORT`        | `8080`             | Port the API listens on                        |
+| `PORT`        | `8080`             | Port the API listens on; under Docker Compose this is the **host** port published by the mapping (the app keeps listening on `8080` inside the container) |
+| `WEBIMAGES_DIR` | `./webimages`    | Directory holding the generated OpenGraph cards (`/app/webimages` in the container) |
 | `DOMAIN`      | (none)             | Optional public domain, used as a fallback for canonical URLs and logged at startup |
 | `DB_HOST`     | `127.0.0.1`        | MariaDB host                                   |
 | `DB_PORT`     | `3306`             | MariaDB port                                   |
@@ -372,14 +401,19 @@ Log out with the **Logout** button in the header (`POST /auth/logout`).
   (3–32, default 6), and whether uppercase letters and digits are allowed in new
   links.
 - **Web Standards** — `robots.txt` toggle and content, `sitemap.xml` toggle, the
-  canonical site URL, the default OpenGraph image and the X/Twitter account.
+  canonical site URL, the default OpenGraph image (used as a fallback) and the
+  X/Twitter account.
 - **HTML** — raw head injection, custom CSS and custom JavaScript applied to
   every page.
-- **Maintenance** — create a brand new example map from the built-in demo data
-  and see which account is signed in.
+- **Maintenance** — create a brand new example map from the built-in demo data,
+  regenerate every OpenGraph image and see which account is signed in.
 
 Settings are stored in the `settings` key/value table and cached in memory after
 every write, so changes apply immediately without a restart.
+
+**Per-map OpenGraph images** are generated by the application itself
+(`og_card_enabled`) and stored on the `WEBIMAGES_DIR` volume — see
+[OpenGraph images](#opengraph-images).
 
 ---
 
@@ -412,8 +446,11 @@ https://criminalmap.example.com/m/abcxyz
 2. Click **Create map** in the header (`/?create=1`), fill in the title, the
    description and the visibility and submit. The map is created **empty** and
    the browser is redirected to its own page.
-3. On the map page, paste new relations in the textarea and press **Process**
-   (`POST /api/maps/{shortId}/parse`) to append them. **Clear map**
+3. On the map page the **Relations** textarea already contains the relations
+   saved in the map. Add, edit or remove lines and press **Process**
+   (`POST /api/maps/{shortId}/parse` with `mode: "replace"`) to save the whole
+   set — removing a line removes that connection from the map. **Copy data**
+   copies the editor content to the clipboard and **Clear map**
    (`DELETE /api/maps/{shortId}/graph`) empties the map without deleting it.
 4. **Save details** updates the title, description and visibility
    (`POST /admin/maps/{id}/update`) and returns to the same page with a
@@ -467,6 +504,69 @@ time.
 
 ---
 
+## OpenGraph images
+
+Every map gets its own **1200×630** card (the 1.91:1 ratio Facebook and LinkedIn
+recommend, and the minimum X/Twitter asks for a `summary_large_image`), so a
+shared map link shows a real preview instead of the generic one:
+
+- **What is on the card**: the site title, the map title (auto-sized, up to two
+  lines), its description, the entity/connection counts, the short URL, the
+  domain and a sketch of the network drawn with the same post‑it palette as the
+  graph in the browser. The colours follow the **default theme**.
+- **How it is rendered**: by the application itself, with no image dependency at
+  all — [`src/ogcard/`](src/ogcard/index.js:1) paints a plain RGB buffer and
+  writes a standard PNG with Node's `zlib`, and even the text comes from a
+  built-in single-stroke font, so the image works on alpine (which ships no
+  fonts) and on every architecture the image is built for.
+- **When it is regenerated**: after every write to a map — created, details
+  saved, relations saved, map emptied — plus once at startup for the initial
+  map. Failures are logged and never block the write: a broken volume can not
+  make saving a map fail.
+- **Where the files live**: `WEBIMAGES_DIR` (default `./webimages`, mapped to
+  `/app/webimages` in the container), one file per map:
+  `webimages/maps/<shortId>-<version>.png`. Only the current version is kept.
+- **The version is content based** (`updated_at` + a hash of title, description,
+  visibility, counts and branding), so the URL changes exactly when the card
+  does — that is what makes crawlers pick up a new preview — and the file can be
+  served with `Cache-Control: immutable`.
+- **How it is served**: `GET /media/maps/<shortId>-<version>.png`. A request for
+  the current version regenerates the file if it is missing (first hit after a
+  deploy, empty volume, restored backup); an older version answers `302` to the
+  current one; a **private** map answers `404` to visitors, exactly like its page.
+- **On the pages**: the map pages (and the home page, for the map being
+  previewed) point `og:image`, `og:image:width/height/type` and
+  `twitter:image` at that card, and switch `twitter:card` to
+  `summary_large_image` automatically. Administrators also see a preview of the
+  card in the map editor.
+- **Turning it off**: *Settings → Appearance → Generate an OpenGraph image per
+  map*. When it is off, pages fall back to the default OpenGraph image URL
+  configured next to it and `/media/maps/…` answers `404`.
+- **After changing the branding** (site title, domain, default theme) run
+  *Settings → Maintenance → Regenerate OpenGraph images* so the stored cards are
+  redrawn.
+
+### Permissions on the image folder
+
+The container runs as the unprivileged `node` user (uid 1000), while a bind mount
+is created by Docker as `root`. In Compose, make the host folder writable once:
+
+```bash
+cd docker
+mkdir -p webimages
+sudo chown -R 1000:1000 webimages
+```
+
+Without that the application still runs: it logs
+`[ogcard] … is not writable`, renders the cards on demand and serves them with
+`Cache-Control: no-store` instead of failing. Prefer a Docker managed volume?
+Comment the bind mount out in [`docker/docker-compose.yml`](docker/docker-compose.yml:1),
+uncomment the `volumes:` block at the bottom and use
+`- webimages:/app/webimages`; named volumes inherit the ownership set in the
+image, so no `chown` is needed.
+
+---
+
 ## API endpoints
 
 All endpoints return JSON. The base URL is `http://localhost:8080` in local
@@ -477,8 +577,9 @@ setups.
 | GET    | `/api/settings`     | public | Public settings (default locale/theme, map prefix, locales, …)   |
 | GET    | `/api/maps`         | admin  | Lists saved maps with their public URLs                          |
 | GET    | `/api/maps/{shortId}` | public | Returns a saved map with its graph (published maps only)       |
-| POST   | `/api/maps/{shortId}/parse` | admin | Parses text, appends nodes/edges to the map, returns its graph |
+| POST   | `/api/maps/{shortId}/parse` | admin | Parses text and appends (`mode: "append"`, the default) or replaces (`mode: "replace"`) the map relations |
 | DELETE | `/api/maps/{shortId}/graph` | admin | Empties the map (every node and edge; the map itself stays)  |
+| GET    | `/media/maps/{shortId}-{version}.png` | public | Generated OpenGraph card of a map (302 for an old version, 404 for private maps) |
 
 **Access column**: `admin` endpoints require a signed-in administrator and answer
 `401` (JSON) otherwise; `GET /api/maps/{shortId}` answers `404` for private maps
@@ -544,8 +645,9 @@ Private maps answer `404` unless an administrator is signed in.
 
 ### `POST /api/maps/{shortId}/parse`
 
-Appends relations to a saved map (administrator only). Request body:
-`{ "text": "..." }`.
+Writes relations into a saved map (administrator only). Request body:
+`{ "text": "...", "mode": "append" | "replace" }` — `mode` is optional and
+defaults to `append`.
 
 ```bash
 curl -X POST http://localhost:8080/api/maps/abcxyz/parse \
@@ -575,6 +677,21 @@ Nodes are upserted by label (`map_nodes` is unique per map + label), while every
 relation becomes a **new** edge row, so repeated relations stay as parallel
 edges.
 
+With `mode: "replace"` — what the map editor sends — every node and edge stored
+in the map is removed first, so the text is the **full relation set**: lines can
+be added, edited and removed, and deleting a line deletes that connection. A
+single invalid line answers `400` (with `invalidLines`) and changes nothing, so
+the previous content is never lost by accident. An empty `text` is always
+refused with `400`; use `DELETE /api/maps/{shortId}/graph` to empty a map.
+
+```bash
+# replace every relation of the map with the given lines
+curl -X POST http://localhost:8080/api/maps/abcxyz/parse \
+  -H "Content-Type: application/json" \
+  -H "Cookie: criminalmap_session=..." \
+  -d '{"text":"[A] -> [B] : Met once | Fontes: https://example.com/a","mode":"replace"}'
+```
+
 ### `DELETE /api/maps/{shortId}/graph`
 
 Empties a saved map (administrator only). The map itself, its title, description
@@ -591,6 +708,23 @@ Response:
 { "success": true, "removed": { "nodes": 10, "edges": 9 } }
 ```
 
+Emptied maps keep their OpenGraph card (title, description and "no entities
+yet"), which is regenerated by the same request.
+
+### `GET /media/maps/{shortId}-{version}.png`
+
+The generated OpenGraph card of a map (see
+[OpenGraph images](#opengraph-images)). It is public — social crawlers do not have
+a session — but it follows the visibility of the map: a **private** map answers
+`404`, exactly like its page. The current name is advertised by the map page in
+`og:image`.
+
+- Current version → `200 image/png` with
+  `Cache-Control: public, max-age=31536000, immutable` (the file is generated on
+  the spot when it is not on the volume yet).
+- Older/unknown version of an existing map → `302` to the current card.
+- Unknown map or malformed file name → `404`.
+
 ---
 
 ## Graph behaviour
@@ -601,9 +735,17 @@ it settles once and then stops moving.
 - **Physics is only used to settle the layout.** After the initial stabilization
   the solver is frozen (`physics.enabled = false`), so nodes do not drift or
   wobble forever after a pinch, a pan or a tap on a phone.
-- **Moving a node re-enables the solver** while the node is dragged (its
-  neighbours follow) and for ~600 ms after it is released, then everything is
-  frozen again — a smooth settle instead of an endless jiggle.
+- **The graph only moves while the user moves it.** Dragging a box re-enables the
+  solver for as long as the drag lasts (its neighbours follow) and releasing it
+  freezes the solver **immediately** — nothing rearranges after the mouse button
+  is released. New content (loading a map, pressing **Process**) is the only case
+  where the layout relaxes on its own, so freshly added nodes find a place.
+- **Middle click** anywhere on the graph resets the zoom by framing the whole
+  graph again (animated, unless `prefers-reduced-motion` is set), the wheel zooms
+  in and out, clicking a box or a connection opens its details and dragging the
+  background pans the map. The **?** button in the header — next to the theme
+  toggle, with the same design — opens a popup with those instructions, so
+  visitors do not have to guess.
 - Narrow viewports (`≤ 900px`) use a more compact physics profile so the same
   graph occupies a smaller area and the automatic `fit` zooms in more (readable
   labels) instead of shrinking the map to an unreadable smudge.

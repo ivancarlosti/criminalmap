@@ -1,0 +1,6 @@
+# Generated content — never commit the OpenGraph images or local secrets.
+webimages/
+docker/webimages/
+docker/.env
+.env
+*.log
