@@ -47,22 +47,6 @@ jobs:
             -x ".git/*" ".github/*" "docker/*" ".dockerignore" \
                "CNAME" "Dockerfile" "README.md" "LICENSE"
 
-      - name: ✅ Ensure GitHub Release exists
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${{ steps.version.outputs.tag }}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "Release $TAG already exists."
-          else
-            echo "Release $TAG not found — creating it."
-            TARGET="$(git rev-parse "${TAG}^{commit}" 2>/dev/null || git rev-parse "$TAG")"
-            gh release create "$TAG" \
-              --title "$TAG" \
-              --notes "Release $TAG" \
-              --target "$TARGET"
-          fi
-
       - name: 📤 Upload ZIP to GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -163,6 +147,12 @@ jobs:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
+          # Stamp the release into the binary: without these arguments the
+          # Dockerfile defaults (ARG VERSION=dev / COMMIT=unknown) end up in
+          # /api/version, in Admin > About and in the startup log.
+          build-args: |
+            VERSION=${{ steps.version.outputs.version }}
+            COMMIT=${{ github.sha }}
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ steps.version.outputs.docker_repo }}:latest
             ghcr.io/${{ github.repository_owner }}/${{ steps.version.outputs.docker_repo }}:${{ steps.version.outputs.version }}
