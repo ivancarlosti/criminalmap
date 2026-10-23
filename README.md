@@ -67,7 +67,7 @@ The system consists of:
 | ---------- | ------------------------------------------------------- |
 | Frontend   | HTML5, CSS3, Vanilla JavaScript                         |
 | Graph      | Vis.js (vis-network 9.1.9) via CDN                       |
-| Backend    | Node.js, Express 4                                       |
+| Backend    | Node.js, Express 5                                       |
 | Templating | Tiny server-side renderer (`src/render.js`), no engine   |
 | Auth       | Signed HttpOnly cookies + scrypt hashes (`node:crypto`)  |
 | Database   | MariaDB (accessed through `mysql2`)                      |

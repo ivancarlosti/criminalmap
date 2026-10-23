@@ -1,6 +1,6 @@
 'use strict';
 
-require('dotenv').config();
+require('dotenv').config({ quiet: true });
 
 const path = require('path');
 const express = require('express');
@@ -1070,10 +1070,16 @@ app.get('/', asyncHandler(async (req, res) => {
 }));
 
 // GET /{map_path_prefix}/{shortId} -> saved map (editable for administrators).
+// Express 5 (path-to-regexp 8) no longer supports regexp constraints inside
+// route params, so both segments are validated in the handler instead.
 app.get(
-  '/:prefix([a-z0-9_-]{1,16})/:shortId([A-Za-z0-9]{3,32})',
+  '/:prefix/:shortId',
   asyncHandler(async (req, res, next) => {
     if (req.params.prefix !== settings.mapPathPrefix()) {
+      return next();
+    }
+
+    if (!/^[A-Za-z0-9]{3,32}$/.test(req.params.shortId)) {
       return next();
     }
 
