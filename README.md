@@ -13,21 +13,22 @@ edge with a topic description and a list of sources.
 ## Table of contents
 
 1. [Overview](#overview)
-2. [Tech stack](#tech-stack)
-3. [Plain-text relation syntax](#plain-text-relation-syntax)
-4. [Project structure](#project-structure)
-5. [Running locally](#running-locally)
-6. [Running with Docker Compose](#running-with-docker-compose)
-7. [Environment variables](#environment-variables)
-8. [Authentication and the admin panel](#authentication-and-the-admin-panel)
-9. [Saved maps and short URLs](#saved-maps-and-short-urls)
-10. [Web standards (robots.txt, sitemap.xml, manifest)](#web-standards-robotstxt-sitemapxml-manifest)
-11. [Themes (dark / light)](#themes-dark--light)
-12. [OpenGraph images](#opengraph-images)
-13. [Graph behaviour](#graph-behaviour)
-14. [Internationalization (i18n)](#internationalization-i18n)
-15. [API endpoints](#api-endpoints)
-16. [GitHub Actions](#github-actions)
+2. [Screenshots](#screenshots)
+3. [Tech stack](#tech-stack)
+4. [Plain-text relation syntax](#plain-text-relation-syntax)
+5. [Project structure](#project-structure)
+6. [Running locally](#running-locally)
+7. [Running with Docker Compose](#running-with-docker-compose)
+8. [Environment variables](#environment-variables)
+9. [Authentication and the admin panel](#authentication-and-the-admin-panel)
+10. [Maps and short URLs](#maps-and-short-urls)
+11. [Web standards (robots.txt, sitemap.xml, manifest)](#web-standards-robotstxt-sitemapxml-manifest)
+12. [Themes (dark / light)](#themes-dark--light)
+13. [OpenGraph images](#opengraph-images)
+14. [API endpoints](#api-endpoints)
+15. [Graph behaviour](#graph-behaviour)
+16. [Internationalization (i18n)](#internationalization-i18n)
+17. [GitHub Actions](#github-actions)
 
 ---
 
@@ -61,13 +62,36 @@ The system consists of:
 
 ---
 
+## Screenshots
+
+Every image below was captured from a local instance running the built-in demo
+map (default `pt_BR` locale). Full-size files and the capture procedure live in
+[`docs/screenshots/`](docs/screenshots) — see
+[`plans/2026-10-24-node-24-alpine-migration-and-screenshots.md`](plans/2026-10-24-node-24-alpine-migration-and-screenshots.md)
+for how they are regenerated.
+
+| Home — map picker and preview | Saved map |
+| --- | --- |
+| ![Home page with the map list on the left and a network preview on the right](docs/screenshots/home-dark.png) | ![Saved map rendered as a zoomable network graph](docs/screenshots/map-dark.png) |
+| **Evidence card** | **Light (parchment) theme** |
+| ![Modal showing a connection with its topic and sources](docs/screenshots/evidence-modal.png) | ![The same map rendered with the light theme](docs/screenshots/map-light.png) |
+| **Administrator map editor** | **Admin settings** |
+| ![Map page with the details form, the relations editor and the social card preview](docs/screenshots/map-editor.png) | ![Admin settings page with the appearance tab selected](docs/screenshots/admin-settings.png) |
+
+![Map page on a phone viewport](docs/screenshots/mobile-map.png)
+
+*Phone viewport (390×844 @2x): the compact graph profile keeps the network
+readable and the header stays usable.*
+
+---
+
 ## Tech stack
 
 | Layer      | Technology                                              |
 | ---------- | ------------------------------------------------------- |
 | Frontend   | HTML5, CSS3, Vanilla JavaScript                         |
 | Graph      | Vis.js (vis-network 9.1.9) via CDN                       |
-| Backend    | Node.js, Express 5                                       |
+| Backend    | Node.js 24 LTS (`node:24-alpine`), Express 5            |
 | Templating | Tiny server-side renderer (`src/render.js`), no engine   |
 | Auth       | Signed HttpOnly cookies + scrypt hashes (`node:crypto`)  |
 | Database   | MariaDB (accessed through `mysql2`)                      |
@@ -122,8 +146,9 @@ Lines that do not match the pattern are ignored by the parser. The
 criminalmap/
 ├── server.js                     # Express app: routes, pages, admin panel, API
 ├── package.json                  # Node metadata, dependencies and scripts
-├── Dockerfile                    # Production runtime image
+├── Dockerfile                    # Production runtime image (node:24-alpine)
 ├── .dockerignore                 # Files excluded from the Docker build context
+├── .nvmrc                        # Node.js major version (24) for local tooling
 ├── src/
 │   ├── db.js                     # MariaDB bootstrap (connect, migrate, seed)
 │   ├── parser.js                 # Plain-text relation parser
@@ -170,6 +195,9 @@ criminalmap/
 │   ├── docker-compose.yml        # Compose service definition
 │   ├── webimages/                # Generated OpenGraph cards (bind mount, git-ignored)
 │   └── .env.example              # Environment template for Docker
+├── docs/
+│   └── screenshots/              # README screenshots (PNG, captured locally)
+├── plans/                        # Dated implementation plans
 └── .github/
     └── workflows/                # CI/CD (see GitHub Actions section)
 ```
@@ -180,7 +208,8 @@ criminalmap/
 
 ### Prerequisites
 
-- Node.js 18 or newer
+- Node.js 24 (LTS) or newer — `.nvmrc` pins major version `24`, so `nvm use`
+  matches the production image
 - A reachable MariaDB/MySQL server
 
 ### 1. Install dependencies
@@ -309,6 +338,10 @@ Then open <http://localhost:8080>.
 
 ### How it works
 
+- **Runtime image**: built `FROM node:24-alpine` (Node.js 24 LTS), the tag used
+  by the [`Dockerfile`](Dockerfile:20). The application runs as the
+  unprivileged `node` user (uid/gid 1000), which is why the bind-mounted
+  `webimages` folder must be owned by uid 1000.
 - **`extra_hosts` / `host.docker.internal`**: the Compose file adds
   `host.docker.internal:host-gateway` so the container can reach a MariaDB
   instance running directly on the Docker host. Leave `DB_HOST` as

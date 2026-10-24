@@ -21,6 +21,8 @@ Dockerfile
 # Documentation and license — keep the image lean.
 *.md
 LICENSE
+docs
+plans
 
 # Logs and temporary files.
 *.log

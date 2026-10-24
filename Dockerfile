@@ -9,8 +9,15 @@
 #   tags:    ghcr.io/ivancarlosti/criminalmap:latest (and :<version>)
 #
 # No build args are passed by the workflow, so none are expected here.
+#
+# Base image: Node.js 24 LTS on Alpine. Node.js 20 reached end-of-life on
+# 2026-04-30, so the previous node:20-alpine base no longer received Node
+# security patches and its pinned Alpine release lagged behind the current
+# openssl/musl/zlib fixes. node:24-alpine tracks the supported LTS line (until
+# April 2028) and the current Alpine base, which is what removes the OS-level
+# and Node.js vulnerabilities reported against the old tag.
 
-FROM node:20-alpine
+FROM node:24-alpine
 
 # Force a strict production runtime.
 ENV NODE_ENV=production
@@ -22,6 +29,15 @@ WORKDIR /app
 # guaranteed to be present in this repository.
 COPY package*.json ./
 RUN npm install --omit=dev
+
+# Keep the npm shipped in the image on the latest release. The copy bundled with
+# node:24-alpine lags behind the registry, and its vendored transitive
+# dependencies (brace-expansion, http-cache-semantics, undici) are the only
+# HIGH findings left after the Node.js/Alpine layers are scanned clean. npm is
+# not used by the running application, but scanners inspect it because it ships
+# in the image. Pinned for reproducible builds — bump it with the base image.
+RUN npm install -g npm@12.2.1 \
+ && npm cache clean --force
 
 # Copy only the runtime files referenced by server.js.
 COPY server.js ./
